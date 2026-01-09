@@ -8,12 +8,35 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { supabase } from '../../lib/supabase'
-import { ThemeModeProvider, useTheme, useThemeMode } from '../../theme/theme'
+import { useTheme, useThemeMode } from '../../theme/theme'
 import { Input } from '../../components/ui/Input'
 import { Button } from '../../components/ui/Button'
+import type { AuthError } from '@supabase/supabase-js'
+import { signInWithPassword } from '../../services/auth.service'
 
-// --- helpers (igual que ya tienes) ---
+function humanizeLoginError(error: AuthError): string {
+  const msg = (error.message || '').toLowerCase()
+
+  if (msg.includes('invalid login credentials')) {
+    return 'Email o contraseña incorrectos.'
+  }
+
+  if (msg.includes('email not confirmed')) {
+    return 'Tu correo aún no está confirmado. Revisa tu email.'
+  }
+
+  if (msg.includes('too many requests') || msg.includes('rate limit')) {
+    return 'Demasiados intentos. Espera un momento e intenta de nuevo.'
+  }
+
+  if (msg.includes('user not found')) {
+    return 'No existe una cuenta con ese email.'
+  }
+
+  return error.message
+}
+
+
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
@@ -29,7 +52,9 @@ function hexToRgba(hex: string, alpha: number) {
 function BubblesBackground() {
   const t = useTheme()
   const bubblePrimary = hexToRgba(t.colors.primary, t.isDark ? 0.14 : 0.10)
-  const bubbleSecondary = t.isDark ? 'rgba(56, 189, 248, 0.10)' : 'rgba(59, 130, 246, 0.08)'
+  const bubbleSecondary = t.isDark
+    ? 'rgba(56, 189, 248, 0.10)'
+    : 'rgba(59, 130, 246, 0.08)'
 
   return (
     <View pointerEvents="none" style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
@@ -51,31 +76,26 @@ function Logo() {
   )
 }
 
-/**
- * AuthScreen:
- * - envolvemos SOLO este screen con ThemeModeProvider
- * - así el toggle afecta únicamente aquí
- */
-export function AuthScreen() {
-  return (
-    <ThemeModeProvider initialMode="system">
-      <AuthScreenInner />
-    </ThemeModeProvider>
-  )
-}
+type Props = { navigation: any; route: any } // para no pelear con types ahorita
 
-function AuthScreenInner() {
+export function LoginScreen({ navigation, route }: Props) {
   const t = useTheme()
-  const { mode, setMode } = useThemeMode()
+  const { setMode } = useThemeMode()
   const insets = useSafeAreaInsets()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [infoMessage, setInfoMessage] = useState<string | null>(null)
 
   const emailTrim = email.trim()
+
+  React.useEffect(() => {
+    const fromRegister = route?.params?.email
+    if (typeof fromRegister === 'string' && fromRegister.length > 0) {
+      setEmail(fromRegister)
+    }
+  }, [route?.params?.email])
 
   const canSubmit = useMemo(() => {
     if (busy) return false
@@ -94,55 +114,28 @@ function AuthScreenInner() {
     return null
   }
 
-  /**
-   * Toggle local:
-   * - si estás viendo dark -> cambia a light
-   * - si estás viendo light -> cambia a dark
-   * Nota: aunque el mode esté en 'system', t.isDark refleja lo que se está mostrando,
-   * así que el toggle funciona igual.
-   */
   const toggleTheme = () => setMode(t.isDark ? 'light' : 'dark')
 
   const signIn = async () => {
     const msg = validate()
     setFormError(msg)
-    setInfoMessage(null)
     if (msg) return
 
     setBusy(true)
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: emailTrim, password })
-      if (error) setFormError(error.message)
+      const { error } = await signInWithPassword(emailTrim, password)
+      if (error) setFormError(humanizeLoginError(error))
     } finally {
       setBusy(false)
     }
-  }
-
-  const signUp = async () => {
-    const msg = validate()
-    setFormError(msg)
-    setInfoMessage(null)
-    if (msg) return
-
-    setBusy(true)
-    try {
-      const { data, error } = await supabase.auth.signUp({ email: emailTrim, password })
-      if (error) return setFormError(error.message)
-
-      if (!data.session) setInfoMessage('Te enviamos un correo para confirmar tu cuenta. Luego inicia sesión.')
-      else setInfoMessage('Cuenta creada ✅')
-    } finally {
-      setBusy(false)
-    }
-  }
+  }  
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.colors.bg }}>
       <StatusBar barStyle={t.isDark ? 'light-content' : 'dark-content'} />
-
       <BubblesBackground />
 
-      {/* Botón toggle (arriba derecha) */}
+      {/* Toggle tema */}
       <Pressable
         onPress={toggleTheme}
         hitSlop={10}
@@ -155,21 +148,11 @@ function AuthScreenInner() {
           borderRadius: 999,
           borderWidth: 1,
           borderColor: hexToRgba(t.colors.border, 0.8),
-          backgroundColor: t.isDark
-            ? 'rgba(255,255,255,0.08)'
-            : 'rgba(0,0,0,0.06)',
+          backgroundColor: t.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+          zIndex: 10,
         }}
       >
-        {/* Icono simple sin libs */}
-        <Text style={{ color: t.colors.text, fontWeight: '800' }}>
-          {t.isDark ? '☀️' : '🌙'}
-        </Text>
-
-        {/* Si quieres mostrar modo actual (opcional):
-        <Text style={{ color: t.colors.muted, fontSize: 12 }}>
-          {mode === 'system' ? 'Auto' : mode}
-        </Text>
-        */}
+        <Text style={{ color: t.colors.text, fontWeight: '800' }}>{t.isDark ? '☀️' : '🌙'}</Text>
       </Pressable>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -193,7 +176,7 @@ function AuthScreenInner() {
             <View style={{ alignItems: 'center', gap: 6, marginBottom: 6 }}>
               <Logo />
               <Text style={{ color: t.colors.muted, textAlign: 'center' }}>
-                Torneos rápidos, resultados claros.
+                Inicia sesión para ver y crear torneos.
               </Text>
             </View>
 
@@ -201,25 +184,16 @@ function AuthScreenInner() {
               <Input
                 placeholder="Email"
                 value={email}
-                onChangeText={(v) => {
-                  setEmail(v)
-                  setFormError(null)
-                  setInfoMessage(null)
-                }}
+                onChangeText={(v) => { setEmail(v); setFormError(null) }}
                 autoCapitalize="none"
                 keyboardType="email-address"
                 autoComplete="email"
                 textContentType="emailAddress"
               />
-
               <Input
                 placeholder="Password"
                 value={password}
-                onChangeText={(v) => {
-                  setPassword(v)
-                  setFormError(null)
-                  setInfoMessage(null)
-                }}
+                onChangeText={(v) => { setPassword(v); setFormError(null) }}
                 secureTextEntry
                 autoComplete="password"
                 textContentType="password"
@@ -240,23 +214,13 @@ function AuthScreenInner() {
               </View>
             ) : null}
 
-            {infoMessage ? (
-              <View
-                style={{
-                  padding: t.space.sm,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: hexToRgba(t.colors.primary, 0.35),
-                  backgroundColor: hexToRgba(t.colors.primary, t.isDark ? 0.14 : 0.10),
-                }}
-              >
-                <Text style={{ color: t.colors.text, fontWeight: '700' }}>{infoMessage}</Text>
-              </View>
-            ) : null}
-
             <View style={{ gap: t.space.sm }}>
               <Button title={busy ? '...' : 'Iniciar sesión'} onPress={signIn} disabled={!canSubmit} />
-              <Button title={busy ? '...' : 'Crear cuenta'} onPress={signUp} disabled={!canSubmit} variant="ghost" />
+              <Button
+                title="Crear cuenta"
+                onPress={() => navigation.navigate('Register')}
+                variant="ghost"
+              />
             </View>
 
             <Text style={{ color: t.colors.muted, textAlign: 'center', marginTop: 6 }}>
