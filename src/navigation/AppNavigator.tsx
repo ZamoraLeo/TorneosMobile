@@ -1,8 +1,9 @@
+// src/navigation/AppNavigator.tsx
 import React, { useEffect, useMemo, useState } from 'react'
 import { View, Text } from 'react-native'
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { Session } from '@supabase/supabase-js'
+import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../theme/theme'
 import { useAuthHealthCheck } from '../auth/useAuthHealthCheck'
@@ -20,7 +21,14 @@ const Stack = createNativeStackNavigator<RootStackParamList>()
 function Splash() {
   const t = useTheme()
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: t.colors.bg,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
       <Text style={{ color: t.colors.muted, fontWeight: '700' }}>Cargando…</Text>
     </View>
   )
@@ -28,10 +36,12 @@ function Splash() {
 
 export function AppNavigator() {
   const t = useTheme()
-  useAuthHealthCheck()
 
   const [session, setSession] = useState<Session | null>(null)
   const [authReady, setAuthReady] = useState(false)
+
+  // ✅ Health check sin locks
+  useAuthHealthCheck(session?.access_token ?? null, authReady)
 
   useEffect(() => {
     let mounted = true
@@ -43,7 +53,6 @@ export function AppNavigator() {
     })
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      // Si todavía no está ready (caso raro), lo ponemos ready aquí también
       setSession(newSession)
       setAuthReady(true)
     })

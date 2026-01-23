@@ -8,9 +8,14 @@ import { useTheme } from '../theme/theme'
 
 // Screens
 import { TournamentsScreen } from '../screens/tournaments/TournamentsScreen'
+import { CreateTournamentScreen } from '../screens/tournaments/CreateTournamentScreen'
+
 import { CommunitiesScreen } from '../screens/communities/CommunitiesScreen'
-import { SettingsScreen } from '../screens/settings/SettingsScreen'
+import { ProfileScreen } from '../screens/profile/ProfileScreen'
+import { EditProfileScreen } from '../screens/profile/EditProfileScreen'
+import { AppSettingsScreen } from '../screens/settings/AppSettingsScreen'
 import { HomeScreen } from '../screens/home/HomeScreen'
+import { TournamentDetailsScreen } from '../screens/tournaments/TournamentDetailsScreen'
 
 export type MainTabParamList = {
   Home: undefined
@@ -132,7 +137,7 @@ function BottomTabsBar({ state, descriptors, navigation, position }: MaterialTop
                 ? '🏆'
                 : route.name === 'Communities'
                   ? '👥'
-                  : '⚙️'
+                  : '👤'
 
           return (
             <Pressable
@@ -182,9 +187,17 @@ function BottomTabsBar({ state, descriptors, navigation, position }: MaterialTop
  * Stacks por tab (para crecer después sin romper navegación)
  */
 type HomeStackParamList = { HomeMain: undefined }
-type TournamentsStackParamList = { TournamentsMain: undefined }
+type TournamentsStackParamList = {
+  TournamentsMain: undefined
+  CreateTournament: undefined
+  TournamentDetails: { tournamentId: string }
+}
 type CommunitiesStackParamList = { CommunitiesMain: undefined }
-type SettingsStackParamList = { SettingsMain: undefined }
+type SettingsStackParamList = {
+  ProfileMain: undefined
+  EditProfile: undefined
+  AppSettings: undefined
+}
 
 const HomeStack = createNativeStackNavigator<HomeStackParamList>()
 const TournamentsStack = createNativeStackNavigator<TournamentsStackParamList>()
@@ -214,7 +227,22 @@ function TournamentsStackNavigator() {
   const screenOptions = useStackScreenOptions()
   return (
     <TournamentsStack.Navigator screenOptions={screenOptions}>
-      <TournamentsStack.Screen name="TournamentsMain" component={TournamentsScreen} options={{ title: 'Torneos' }} />
+      <TournamentsStack.Screen
+        name="TournamentsMain"
+        component={TournamentsScreen}
+        options={{ title: 'Torneos' }} />
+
+      <TournamentsStack.Screen
+        name="CreateTournament"
+        component={CreateTournamentScreen}
+        options={{ title: 'Crear torneo' }}
+      />
+
+      <TournamentsStack.Screen
+        name="TournamentDetails"
+        component={TournamentDetailsScreen}
+        options={{ title: 'Torneo' }}
+      />
     </TournamentsStack.Navigator>
   )
 }
@@ -232,7 +260,21 @@ function SettingsStackNavigator() {
   const screenOptions = useStackScreenOptions()
   return (
     <SettingsStack.Navigator screenOptions={screenOptions}>
-      <SettingsStack.Screen name="SettingsMain" component={SettingsScreen} options={{ title: 'Ajustes' }} />
+      <SettingsStack.Screen
+        name="ProfileMain"
+        component={ProfileScreen}
+        options={{ title: 'Perfil' }}
+      />
+      <SettingsStack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ title: 'Editar perfil' }}
+      />
+      <SettingsStack.Screen
+        name="AppSettings"
+        component={AppSettingsScreen}
+        options={{ title: 'Configuración' }}
+      />
     </SettingsStack.Navigator>
   )
 }
@@ -251,7 +293,7 @@ export function MainTabsNavigator() {
       <Tab.Screen name="Home" component={HomeStackNavigator} options={{ tabBarLabel: 'Home' }} />
       <Tab.Screen name="Tournaments" component={TournamentsStackNavigator} options={{ tabBarLabel: 'Torneos' }} />
       <Tab.Screen name="Communities" component={CommunitiesStackNavigator} options={{ tabBarLabel: 'Comunidad' }} />
-      <Tab.Screen name="Settings" component={SettingsStackNavigator} options={{ tabBarLabel: 'Ajustes' }} />
+      <Tab.Screen name="Settings" component={SettingsStackNavigator} options={{ tabBarLabel: 'Perfil' }} />
     </Tab.Navigator>
   )
 }

@@ -22,15 +22,25 @@ export async function humanizeSignUpError(
   error: AuthError,
   usernameNorm?: string
 ): Promise<string> {
-  if (error.message === 'Database error saving new user') {
+  const msg = (error.message || '').toLowerCase()
+
+  // Caso típico cuando falla el trigger/perfil en DB
+  if (msg.includes('database error saving new user')) {
     if (usernameNorm) {
       const res = await isUsernameAvailable(usernameNorm)
-      if (res.available === false) return 'Ese username ya está en uso. Prueba otro.'
+
+      if (res.ok && res.data === false) {
+        return 'Ese username ya está en uso. Prueba otro.'
+      }
     }
+
     return 'No se pudo crear tu perfil. Revisa tu username e intenta de nuevo.'
   }
 
-  if (/already registered/i.test(error.message)) return 'Ese email ya está registrado. Inicia sesión.'
+  if (/already registered/i.test(error.message)) {
+    return 'Ese email ya está registrado. Inicia sesión.'
+  }
+
   return error.message
 }
 
@@ -141,14 +151,14 @@ export function RegisterScreen({ navigation }: Props) {
   
     const res = await isUsernameAvailable(u)
   
-    if (res.available === null) {
-      logError('Register.username_available', res.error ?? 'unknown')
+    if (!res.ok) {
+      logError('Register.username_available', res.error?.message || 'unknown')
       setUsernameStatus('error')
       setUsernameHint('No se pudo verificar. Intenta de nuevo.')
       return null
     }
   
-    if (res.available === false) {
+    if (res.data === false) {
       setUsernameStatus('taken')
       setUsernameHint('Usuario no disponible.')
       return false
@@ -157,7 +167,7 @@ export function RegisterScreen({ navigation }: Props) {
     setUsernameStatus('available')
     setUsernameHint('Disponible ✅')
     return true
-  }, [])  
+  }, [])
 
   // Debounce check
   useEffect(() => {
@@ -251,37 +261,38 @@ export function RegisterScreen({ navigation }: Props) {
         displayName: displayNameTrim || fullNameTrim,
         username: usernameNorm,
       })
-  
+      
       if (!res.ok) {
-        if (res.usernameTaken) {
+        if (res.error.kind === 'username_taken') {
           const m = 'Ese username ya está en uso. Prueba otro.'
           setFormError(m)
           toast.error('Username ocupado', m)
           return
         }
-  
-        if (res.usernameCheckFailed) {
+      
+        if (res.error.kind === 'username_check_failed') {
           const m = 'No pudimos verificar el username. Intenta de nuevo.'
           setFormError(m)
           toast.error('Error', m)
           return
         }
-  
-        // fallback por ahora (luego lo mandamos a errors.ts)
-        const nice = await humanizeSignUpError(res.error, usernameNorm)
+      
+        // kind === 'auth'
+        const nice = await humanizeSignUpError(res.error.error, usernameNorm)
         setFormError(nice)
         toast.error('No se pudo crear la cuenta', nice)
         return
       }
-  
-      if (res.looksLikeExistingEmail) {
+
+      // ✅ success
+      if (res.data.looksLikeExistingEmail) {
         toast.info(
           'Revisa tu correo',
           'Si el email es nuevo, te llegará un correo de confirmación. Si ya tienes cuenta, inicia sesión.'
         )
         return
       }
-  
+
       toast.success('Cuenta creada', 'Revisa tu correo para confirmar y luego inicia sesión.')
       goToLogin()
     } catch (e) {

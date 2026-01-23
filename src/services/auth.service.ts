@@ -1,108 +1,78 @@
+// src/services/auth.service.ts
 import { supabase } from '../lib/supabase'
-import type { AuthError, Session, User } from '@supabase/supabase-js'
+import type { AuthError } from '@supabase/supabase-js'
+import { err, ok, type Result } from './_result'
 import { isUsernameAvailable } from './profiles.service'
+import type { SignInData, SignUpError, SignUpOk, SignUpPayload } from '../domain/auth'
 
-export type SignUpPayload = {
-  email: string
-  password: string
-  fullName: string
-  displayName?: string
-  username: string
+function authApiError(message: string, status = 400) {
+  return { name: 'AuthApiError', status, message } as AuthError
 }
 
-export type SignUpResult =
-  | {
-      ok: true
-      // Caso típico: confirmación email -> no session
-      needsEmailConfirmation: boolean
-      user: User | null
-      session: Session | null
-      looksLikeExistingEmail: boolean
-    }
-  | {
-      ok: false
-      error: AuthError
-      // señales útiles para UI
-      usernameTaken?: boolean
-      usernameCheckFailed?: boolean
-    }
-
-export async function signInWithPassword(email: string, password: string) {
-  return supabase.auth.signInWithPassword({
+export async function signInWithPassword(
+  email: string,
+  password: string
+): Promise<Result<SignInData, AuthError>> {
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: email.trim(),
     password,
   })
+
+  if (error) return err(error)
+  if (!data.user || !data.session) return err(authApiError('no_session', 500))
+
+  return ok({ user: data.user, session: data.session })
 }
 
-export async function signOut() {
-  return supabase.auth.signOut()
+export async function signOut(): Promise<Result<null, AuthError>> {
+  const { error } = await supabase.auth.signOut()
+  if (error) return err(error)
+  return ok(null)
 }
 
-/**
- * Sign up con:
- * 1) check username (RPC)
- * 2) signUp con metadata (options.data)
- * 3) detecta "email ya existe" (identities.length === 0)
- */
-export async function signUpWithProfile(payload: SignUpPayload): Promise<SignUpResult> {
+export async function signUpWithProfile(
+  payload: SignUpPayload
+): Promise<Result<SignUpOk, SignUpError>> {
   const email = payload.email.trim()
   const password = payload.password
   const fullName = payload.fullName.trim()
-  const displayName = (payload.displayName?.trim() || fullName)
+  const displayName = payload.displayName?.trim() || fullName
   const username = payload.username.trim().toLowerCase()
 
-  // 1) username availability
-  const { available, error: userCheckError } = await isUsernameAvailable(username)
+  const chk = await isUsernameAvailable(username)
 
-  if (available === false) {
-    // username ocupado
-    // devolvemos ok:false con flags para que UI muestre el mensaje correcto
-    // (sin humanizar global todavía)
-    return {
-      ok: false,
-      // fabricamos un AuthError “dummy” para mantener tipo uniforme
-      // (la UI igual usará los flags)
-      error: { name: 'AuthApiError', status: 400, message: 'username_taken' } as AuthError,
-      usernameTaken: true,
-    }
+  if (!chk.ok) {
+    return err({
+      kind: 'username_check_failed',
+      error: authApiError(chk.error?.message || 'username_check_failed', 500),
+    })
   }
 
-  if (available === null) {
-    return {
-      ok: false,
-      error: { name: 'AuthApiError', status: 500, message: userCheckError || 'username_check_failed' } as AuthError,
-      usernameCheckFailed: true,
-    }
+  if (chk.data === false) {
+    return err({
+      kind: 'username_taken',
+      error: authApiError('username_taken', 400),
+    })
   }
 
-  // 2) signUp
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: {
-        full_name: fullName,
-        display_name: displayName,
-        username,
-      },
+      data: { full_name: fullName, display_name: displayName, username },
     },
   })
 
-  if (error) {
-    return { ok: false, error }
-  }
+  if (error) return err({ kind: 'auth', error })
 
-  // 3) detectar email existente (caso “silencioso” de Supabase)
   const identities = data.user?.identities ?? []
   const looksLikeExistingEmail = !!data.user && identities.length === 0
-
   const needsEmailConfirmation = !data.session
 
-  return {
-    ok: true,
+  return ok({
     needsEmailConfirmation,
     user: data.user ?? null,
     session: data.session ?? null,
     looksLikeExistingEmail,
-  }
+  })
 }

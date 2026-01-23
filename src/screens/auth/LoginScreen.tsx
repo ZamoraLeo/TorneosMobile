@@ -120,11 +120,16 @@ export function LoginScreen({ navigation, route }: Props) {
     const msg = validate()
     setFormError(msg)
     if (msg) return
-
+  
     setBusy(true)
     try {
-      const { error } = await signInWithPassword(emailTrim, password)
-      if (error) setFormError(humanizeLoginError(error))
+      const res = await signInWithPassword(emailTrim, password)
+  
+      if (!res.ok) {
+        setFormError(humanizeLoginError(res.error))
+        return
+      }
+  
     } finally {
       setBusy(false)
     }

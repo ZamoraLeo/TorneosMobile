@@ -1,37 +1,56 @@
-import { useEffect } from 'react'
+// src/auth/useAuthHealthCheck.ts
+import { useEffect, useRef, useCallback } from 'react'
 import { AppState, AppStateStatus } from 'react-native'
 import { supabase } from '../lib/supabase'
 
-async function ensureAuthStillValid() {
-  // Si no hay sesión local, no hay nada que validar
-  const { data: sessionData } = await supabase.auth.getSession()
-  if (!sessionData.session) return
+export function useAuthHealthCheck(accessToken: string | null, enabled: boolean) {
+  const inFlight = useRef(false)
+  const lastRunAt = useRef(0)
+  const tokenRef = useRef<string | null>(accessToken)
 
-  // Si hay sesión, validamos contra el servidor
-  const { data, error } = await supabase.auth.getUser()
-
-  if (!error && data.user) return
-
-  // Importante: evita “desloggear” por fallas de red.
-  // Solo limpiamos sesión local si parece un 401/403 (token inválido/usuario inexistente).
-  const status = (error as any)?.status
-  const shouldForceLogout = status === 401 || status === 403 || !data?.user
-
-  if (shouldForceLogout) {
-    await supabase.auth.signOut({ scope: 'local' }) // solo limpia storage local
-  }
-}
-
-export function useAuthHealthCheck() {
   useEffect(() => {
-    // Chequeo al arrancar
-    ensureAuthStillValid()
+    tokenRef.current = accessToken
+  }, [accessToken])
 
-    // Chequeo al volver a foreground
+  const run = useCallback(async () => {
+    if (!enabled) return
+    const token = tokenRef.current
+    if (!token) return
+
+    if (inFlight.current) return
+
+    const now = Date.now()
+    if (now - lastRunAt.current < 15_000) return // throttle
+
+    inFlight.current = true
+    try {
+      // ✅ NO storage, NO lock: usamos token directo
+      const { data, error } = await supabase.auth.getUser(token)
+
+      if (!error && data.user) return
+
+      const status = (error as any)?.status
+      const shouldForceLogout = status === 401 || status === 403 || !data?.user
+
+      if (shouldForceLogout) {
+        await supabase.auth.signOut({ scope: 'local' })
+      }
+    } finally {
+      lastRunAt.current = Date.now()
+      inFlight.current = false
+    }
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled) return
+
+    // ✅ Opcional: puedes validarlo al arrancar sin locks
+    run()
+
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') ensureAuthStillValid()
+      if (state === 'active') run()
     })
 
     return () => sub.remove()
-  }, [])
+  }, [enabled, run])
 }
