@@ -352,3 +352,35 @@ export async function setParticipantPaid(
   if (error) return err(error)
   return ok(null)
 }
+
+export async function getTournamentParticipantStats(
+  tournamentId: string,
+  tournamentPaid: boolean
+): Promise<Result<{ checkedIn: number; paid: number }>> {
+  const checkedQ = supabase
+    .from('tournament_participants')
+    .select('id', { count: 'exact', head: true })
+    .eq('tournament_id', tournamentId)
+    .eq('checked_in', true)
+
+  const paidQ = tournamentPaid
+    ? supabase
+        .from('tournament_participants')
+        .select('id', { count: 'exact', head: true })
+        .eq('tournament_id', tournamentId)
+        .eq('paid', true)
+    : null
+
+  const [checkedRes, paidRes] = await Promise.all([
+    checkedQ,
+    paidQ ?? Promise.resolve({ count: 0, error: null } as any),
+  ])
+
+  if (checkedRes.error) return err(checkedRes.error)
+  if (paidRes?.error) return err(paidRes.error)
+
+  return ok({
+    checkedIn: checkedRes.count ?? 0,
+    paid: paidRes?.count ?? 0,
+  })
+}

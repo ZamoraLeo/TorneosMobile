@@ -23,6 +23,7 @@ import {
   listTournamentParticipants,
   setParticipantCheckIn,
   setParticipantPaid,
+  getTournamentParticipantStats
 } from '../../services/tournaments.service'
 
 import type {
@@ -464,32 +465,68 @@ function ParticipantsTab({
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
-
+  const [checkedInCount, setCheckedInCount] = useState<number>(0)
+  const [paidCount, setPaidCount] = useState<number>(0)
+  
   // ✅ Para evitar spam al tocar check/pago rápidamente
   const [busyMap, setBusyMap] = useState<Record<string, boolean>>({})
+
+  type SwipeableRef = { close: () => void } | null
+
+  const rowRefs = React.useRef<Record<string, SwipeableRef>>({})
+  const openRowId = React.useRef<string | null>(null)
+
+  const closeRow = (id: string) => {
+    rowRefs.current[id]?.close?.()
+  }
+
+  const closeOpenRow = () => {
+    if (openRowId.current) {
+      rowRefs.current[openRowId.current]?.close?.()
+      openRowId.current = null
+    }
+  }
+
+  const onRowWillOpen = (id: string) => {
+    // ✅ Cierra el que estaba abierto antes
+    if (openRowId.current && openRowId.current !== id) {
+      rowRefs.current[openRowId.current]?.close?.()
+    }
+    openRowId.current = id
+  }
 
   const setBusy = (id: string, val: boolean) => {
     setBusyMap((prev) => ({ ...prev, [id]: val }))
   }
 
   const loadFirstPage = useCallback(async () => {
+    closeOpenRow()
     const res = await listTournamentParticipants(tournamentId, {
       page: 0,
       pageSize: PAGE_SIZE,
     })
-
+  
     if (!res.ok) {
       Alert.alert('Error', res.error?.message || 'No se pudieron cargar participantes.')
       return
     }
-
+  
     setItems(res.data.items)
     setPage(0)
     setHasMore(res.data.hasMore)
     setTotalCount(res.data.total ?? res.data.items.length)
-  }, [tournamentId])
+  
+    // ✅ Conteos reales (sin traer filas)
+    const stats = await getTournamentParticipantStats(tournamentId, tournamentPaid)
+    if (stats.ok) {
+      setCheckedInCount(stats.data.checkedIn)
+      setPaidCount(stats.data.paid)
+    }
+  }, [tournamentId, tournamentPaid])
+  
 
   const loadMore = useCallback(async () => {
+    closeOpenRow()
     if (!hasMore) return
     if (loadingMore || loading || refreshing) return
 
@@ -543,15 +580,18 @@ function ParticipantsTab({
           style: 'destructive',
           onPress: async () => {
             const res = await deleteParticipant(p.id)
-
+          
             if (!res.ok) {
               Alert.alert('Error', res.error?.message || 'No se pudo eliminar el participante.')
               return
             }
-
+          
             setItems((prev) => prev.filter((x) => x.id !== p.id))
             setTotalCount((prev) => Math.max(0, prev - 1))
-          },
+          
+            if (p.checked_in) setCheckedInCount((c) => Math.max(0, c - 1))
+            if (tournamentPaid && p.paid) setPaidCount((c) => Math.max(0, c - 1))
+          },          
         },
       ]
     )
@@ -560,18 +600,25 @@ function ParticipantsTab({
   const toggleCheckIn = useCallback(
     async (p: TournamentParticipantListItem) => {
       if (busyMap[p.id]) return
-
-      const next = !p.checked_in
+  
+      const current = !!p.checked_in
+      const next = !current
+  
       setBusy(p.id, true)
-
+  
       // ✅ Optimistic UI
       setItems((prev) => prev.map((x) => (x.id === p.id ? { ...x, checked_in: next } : x)))
-
+      setCheckedInCount((c) => c + (next ? 1 : -1))
+  
       try {
         const res = await setParticipantCheckIn(p.id, next)
+  
         if (!res.ok) {
-          // rollback
-          setItems((prev) => prev.map((x) => (x.id === p.id ? { ...x, checked_in: !next } : x)))
+          // rollback item
+          setItems((prev) => prev.map((x) => (x.id === p.id ? { ...x, checked_in: current } : x)))
+          // rollback count
+          setCheckedInCount((c) => c + (next ? -1 : 1))
+  
           Alert.alert('Error', res.error?.message || 'No se pudo actualizar el check-in.')
         }
       } finally {
@@ -584,26 +631,32 @@ function ParticipantsTab({
   const togglePaid = useCallback(
     async (p: TournamentParticipantListItem) => {
       if (busyMap[p.id]) return
-
+  
       const current = !!p.paid
       const next = !current
+  
       setBusy(p.id, true)
-
+  
       // ✅ Optimistic UI
       setItems((prev) => prev.map((x) => (x.id === p.id ? { ...x, paid: next } : x)))
-
+      if (tournamentPaid) setPaidCount((c) => c + (next ? 1 : -1))
+  
       try {
         const res = await setParticipantPaid(p.id, next)
+  
         if (!res.ok) {
-          // rollback
+          // rollback item
           setItems((prev) => prev.map((x) => (x.id === p.id ? { ...x, paid: current } : x)))
+          // rollback count
+          if (tournamentPaid) setPaidCount((c) => c + (next ? -1 : 1))
+  
           Alert.alert('Error', res.error?.message || 'No se pudo actualizar el pago.')
         }
       } finally {
         setBusy(p.id, false)
       }
     },
-    [busyMap]
+    [busyMap, tournamentPaid]
   )
 
   // ✅ Acciones IZQUIERDA (aparecen al deslizar a la DERECHA 👉)
@@ -611,41 +664,40 @@ function ParticipantsTab({
   const renderLeftActions = useCallback(
     (p: TournamentParticipantListItem) => {
       const checkBg = p.checked_in
-        ? hexToRgba('#22C55E', t.isDark ? 0.35 : 0.22) // verde
+        ? hexToRgba('#22C55E', t.isDark ? 0.35 : 0.22)
         : hexToRgba(t.colors.primary, t.isDark ? 0.25 : 0.18)
-
+  
       const paidBg = !!p.paid
-        ? hexToRgba('#F59E0B', t.isDark ? 0.35 : 0.22) // ámbar
-        : hexToRgba('#64748B', t.isDark ? 0.35 : 0.20) // gris
-
+        ? hexToRgba('#F59E0B', t.isDark ? 0.35 : 0.22)
+        : hexToRgba('#64748B', t.isDark ? 0.35 : 0.20)
+  
       return (
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            paddingRight: 10, // ✅ separa del card
-          }}
-        >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 10 }}>
           <SwipeIconButton
             icon={p.checked_in ? '✅' : '☑️'}
             bg={checkBg}
-            onPress={() => toggleCheckIn(p)}
             disabled={busyMap[p.id]}
+            onPress={() => {
+              closeRow(p.id)
+              toggleCheckIn(p)
+            }}
           />
-
+  
           {tournamentPaid ? (
             <SwipeIconButton
               icon={p.paid ? '💰' : '💸'}
               bg={paidBg}
-              onPress={() => togglePaid(p)}
               disabled={busyMap[p.id]}
+              onPress={() => {
+                closeRow(p.id)
+                togglePaid(p)
+              }}
             />
           ) : null}
         </View>
       )
     },
-    [t, toggleCheckIn, togglePaid, busyMap, tournamentPaid]
+    [t, busyMap, tournamentPaid, toggleCheckIn, togglePaid]
   )
 
   // ✅ Acciones DERECHA (aparecen al deslizar a la IZQUIERDA 👈)
@@ -653,17 +705,14 @@ function ParticipantsTab({
   const renderRightActions = useCallback(
     (p: TournamentParticipantListItem) => {
       return (
-        <View
-          style={{
-            justifyContent: 'center',
-            alignItems: 'center',
-            paddingLeft: 10,
-          }}
-        >
+        <View style={{ justifyContent: 'center', alignItems: 'center', paddingLeft: 10 }}>
           <SwipeIconButton
             icon="🗑️"
             bg={hexToRgba(t.colors.danger, t.isDark ? 0.35 : 0.22)}
-            onPress={() => remove(p)}
+            onPress={() => {
+              closeRow(p.id) // ✅ cierra swipe
+              remove(p)
+            }}
           />
         </View>
       )
@@ -683,15 +732,22 @@ function ParticipantsTab({
 
               <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
                 <Text style={{ color: t.colors.muted, fontWeight: '800' }}>
-                  Total: {totalCount}
+                  👥 Total: {totalCount}
                 </Text>
-                <Text style={{ color: t.colors.muted, fontWeight: '700' }}>
-                  Cargados: {items.length}
+
+                <Text style={{ color: t.colors.muted, fontWeight: '800' }}>
+                  ✅ Check-in: {checkedInCount}
                 </Text>
+
+                {tournamentPaid ? (
+                  <Text style={{ color: t.colors.muted, fontWeight: '800' }}>
+                    💰 Pagados: {paidCount}
+                  </Text>
+                ) : null}
               </View>
 
               <Text style={{ color: t.colors.muted, fontWeight: '600', fontSize: 12, marginTop: 4 }}>
-                Desliza a la izquierda para acciones 👈
+                👉 swipe para check-in/pago · 👈 swipe para eliminar
               </Text>
             </View>
 
@@ -715,7 +771,16 @@ function ParticipantsTab({
         ) : null}
       </View>
     )
-  }, [t, items.length, onOpenAddModal, loading, totalCount])
+  }, [
+    t,
+    onOpenAddModal,
+    loading,
+    totalCount,
+    checkedInCount,
+    paidCount,
+    tournamentPaid,
+    items.length,
+  ])
 
   const footer = useMemo(() => {
     if (!loadingMore) return <View style={{ height: 12 }} />
@@ -756,6 +821,14 @@ function ParticipantsTab({
         return (
           <View style={{ paddingHorizontal: t.space.lg, paddingTop: index === 0 ? 0 : t.space.sm }}>
             <Swipeable
+              ref={(ref) => {
+                rowRefs.current[p.id] = ref as any
+              }}
+              onSwipeableWillOpen={() => onRowWillOpen(p.id)}
+              onSwipeableClose={() => {
+                if (openRowId.current === p.id) openRowId.current = null
+              }}
+
               // 👉 swipe derecha
               renderLeftActions={() => renderLeftActions(p)}
               leftThreshold={30}
