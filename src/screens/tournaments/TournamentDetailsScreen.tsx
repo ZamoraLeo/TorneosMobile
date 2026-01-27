@@ -38,7 +38,7 @@ import { Input } from '../../components/ui/Input'
 type Props = { navigation: any; route: any }
 type TabKey = 'stages' | 'participants' | 'config'
 
-const PAGE_SIZE = 5
+const PAGE_SIZE = 10
 
 function hexToRgba(hex: string, alpha: number) {
   const clean = hex.replace('#', '')
@@ -672,7 +672,17 @@ function ParticipantsTab({
         : hexToRgba('#64748B', t.isDark ? 0.35 : 0.20)
   
       return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 10 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+  
+            // ✅ esto hace que los botones queden “bien” con el margen del card
+            paddingLeft: t.space.lg,
+            paddingRight: 10,
+          }}
+        >
           <SwipeIconButton
             icon={p.checked_in ? '✅' : '☑️'}
             bg={checkBg}
@@ -704,16 +714,56 @@ function ParticipantsTab({
   // Aquí va: Eliminar
   const renderRightActions = useCallback(
     (p: TournamentParticipantListItem) => {
+      const dangerBg = hexToRgba(t.colors.danger, t.isDark ? 0.32 : 0.18)
+      const dangerBorder = hexToRgba(t.colors.danger, 0.55)
+  
       return (
-        <View style={{ justifyContent: 'center', alignItems: 'center', paddingLeft: 10 }}>
-          <SwipeIconButton
-            icon="🗑️"
-            bg={hexToRgba(t.colors.danger, t.isDark ? 0.35 : 0.22)}
+        // ✅ el contenedor sí mide todo, para que el swipe “abra completo”
+        <View
+          style={{
+            width: '100%',
+            flex: 1,
+            justifyContent: 'center',
+          }}
+        >
+          <Pressable
             onPress={() => {
-              closeRow(p.id) // ✅ cierra swipe
+              closeRow(p.id)
               remove(p)
             }}
-          />
+            style={({ pressed }) => ({
+              // ✅ ocupa el alto completo de la fila
+              flex: 1,
+  
+              // ✅ mismo “tamaño visual” que el card
+              marginHorizontal: t.space.lg,
+              borderRadius: 18,
+              padding: t.space.md,
+  
+              borderWidth: 1,
+              borderColor: dangerBorder,
+              backgroundColor: dangerBg,
+  
+              alignItems: 'center',
+              justifyContent: 'center',
+  
+              opacity: pressed ? 0.92 : 1,
+            })}
+          >
+            <Text
+              style={{
+                color: t.colors.text,
+                fontWeight: '900',
+                fontSize: 14,
+              }}
+            >
+              ELIMINAR
+            </Text>
+  
+            <Text style={{ color: t.colors.muted, fontWeight: '700', fontSize: 11, marginTop: 2 }}>
+              (toca para confirmar)
+            </Text>
+          </Pressable>
         </View>
       )
     },
@@ -817,10 +867,11 @@ function ParticipantsTab({
         const title = p.display_name || p.guest_name || 'Participante'
         const kind = p.user_id ? 'Usuario app' : 'Invitado'
         const isPaid = !!p.paid
-
+      
         return (
-          <View style={{ paddingHorizontal: t.space.lg, paddingTop: index === 0 ? 0 : t.space.sm }}>
+          <View style={{ paddingTop: index === 0 ? 0 : t.space.sm }}>
             <Swipeable
+              friction={1.5}
               ref={(ref) => {
                 rowRefs.current[p.id] = ref as any
               }}
@@ -828,19 +879,17 @@ function ParticipantsTab({
               onSwipeableClose={() => {
                 if (openRowId.current === p.id) openRowId.current = null
               }}
-
-              // 👉 swipe derecha
+      
               renderLeftActions={() => renderLeftActions(p)}
               leftThreshold={30}
               overshootLeft={false}
-
-              // 👈 swipe izquierda
+      
               renderRightActions={() => renderRightActions(p)}
               rightThreshold={30}
               overshootRight={false}
             >
               <Pressable
-                onLongPress={() => remove(p)} // lo dejamos por si quieres aún ese shortcut
+                onLongPress={() => remove(p)}
                 style={({ pressed }) => ({
                   borderWidth: 1,
                   borderColor: t.colors.border,
@@ -849,6 +898,9 @@ function ParticipantsTab({
                   padding: t.space.md,
                   gap: 8,
                   opacity: pressed ? 0.96 : 1,
+      
+                  // ✅ el margen aquí (NO afuera), para que Swipeable sea full width
+                  marginHorizontal: t.space.lg,
                 })}
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
@@ -860,12 +912,12 @@ function ParticipantsTab({
                       {kind}
                     </Text>
                   </View>
-
+      
                   <View style={{ alignItems: 'flex-end', gap: 3 }}>
                     <Text style={{ color: t.colors.muted, fontWeight: '800', fontSize: 12 }}>
                       {p.checked_in ? '✅ check-in' : '⏳ sin check-in'}
                     </Text>
-
+      
                     {tournamentPaid ? (
                       <Text style={{ color: t.colors.muted, fontWeight: '800', fontSize: 12 }}>
                         {isPaid ? '💰 pagado' : '💸 pendiente'}
@@ -873,10 +925,6 @@ function ParticipantsTab({
                     ) : null}
                   </View>
                 </View>
-
-                <Text style={{ color: t.colors.muted, fontWeight: '700', fontSize: 12 }}>
-                  Mantén presionado para eliminar
-                </Text>
               </Pressable>
             </Swipeable>
           </View>
