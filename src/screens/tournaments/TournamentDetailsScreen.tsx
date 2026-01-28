@@ -1054,7 +1054,7 @@ export function TournamentDetailsScreen({ navigation, route }: Props) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: t.colors.bg }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: t.colors.bg }}>
       <View style={{ padding: t.space.lg, gap: t.space.md }}>
         {errorText ? (
           <View
