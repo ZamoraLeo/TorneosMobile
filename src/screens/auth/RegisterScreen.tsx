@@ -11,12 +11,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { AuthError } from '@supabase/supabase-js'
 
 import { useTheme, useThemeMode } from '../../theme/theme'
-import { Input } from '../../components/ui/Input'
-import { Button } from '../../components/ui/Button'
-import { useToast } from '../../components/ui/toast'
+import { Button, Input, useToast } from '../../components/ui'
 import { getErrorMessage, logError } from '../../utils/logger'
 import { signUpWithProfile } from '../../services/auth.service'
 import { isUsernameAvailable } from '../../services/profiles.service'
+import { hexToRgba } from '../../utils/colors'
 
 export async function humanizeSignUpError(
   error: AuthError,
@@ -74,14 +73,6 @@ function suggestUsernameFromFullName(fullName: string) {
     .replace(/^\.|\.$/g, '')
 
   return base
-}
-
-function hexToRgba(hex: string, alpha: number) {
-  const clean = hex.replace('#', '')
-  const r = parseInt(clean.substring(0, 2), 16)
-  const g = parseInt(clean.substring(2, 4), 16)
-  const b = parseInt(clean.substring(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 function BubblesBackground() {

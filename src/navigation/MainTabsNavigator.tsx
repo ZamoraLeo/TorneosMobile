@@ -16,6 +16,8 @@ import { EditProfileScreen } from '../screens/profile/EditProfileScreen'
 import { AppSettingsScreen } from '../screens/settings/AppSettingsScreen'
 import { HomeScreen } from '../screens/home/HomeScreen'
 import { TournamentDetailsScreen } from '../screens/tournaments/TournamentDetailsScreen'
+import { TournamentConfigScreen } from '../screens/tournaments/TournamentConfigScreen'
+import { hexToRgba } from '../utils/colors'
 
 export type MainTabParamList = {
   Home: undefined
@@ -25,14 +27,6 @@ export type MainTabParamList = {
 }
 
 const Tab = createMaterialTopTabNavigator<MainTabParamList>()
-
-function hexToRgba(hex: string, alpha: number) {
-  const clean = hex.replace('#', '')
-  const r = parseInt(clean.substring(0, 2), 16)
-  const g = parseInt(clean.substring(2, 4), 16)
-  const b = parseInt(clean.substring(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
 
 /**
  * TabBar inferior con “pill” animado que se desliza entre tabs.
@@ -191,6 +185,7 @@ type TournamentsStackParamList = {
   TournamentsMain: undefined
   CreateTournament: undefined
   TournamentDetails: { tournamentId: string }
+  TournamentConfig: { tournamentId: string }
 }
 type CommunitiesStackParamList = { CommunitiesMain: undefined }
 type SettingsStackParamList = {
@@ -242,6 +237,12 @@ function TournamentsStackNavigator() {
         name="TournamentDetails"
         component={TournamentDetailsScreen}
         options={{ title: 'Torneo' }}
+      />
+
+      <TournamentsStack.Screen
+        name="TournamentConfig"
+        component={TournamentConfigScreen}
+        options={{ title: 'Configurar torneo' }}
       />
     </TournamentsStack.Navigator>
   )

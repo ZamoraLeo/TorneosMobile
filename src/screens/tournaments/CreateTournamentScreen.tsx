@@ -1,82 +1,121 @@
 import React, { useMemo, useState } from 'react'
-import {
-  KeyboardAvoidingView,
-  Platform,
-  StatusBar,
-  Text,
-  View,
-} from 'react-native'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-
+import { ActivityIndicator, Pressable, StatusBar, Text, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTheme } from '../../theme/theme'
-import { Input } from '../../components/ui/Input'
-import { Button } from '../../components/ui/Button'
-import { useToast } from '../../components/ui/toast'
-
+import { Button, Input, useToast } from '../../components/ui'
 import { createTournamentMvp } from '../../services/tournaments.service'
-import { getErrorMessage, logError } from '../../utils/logger'
+import { hexToRgba } from '../../utils/colors'
 
-type Props = { navigation: any; route: any }
+type Props = { navigation: any }
 
-function hexToRgba(hex: string, alpha: number) {
-  const clean = hex.replace('#', '')
-  const r = parseInt(clean.substring(0, 2), 16)
-  const g = parseInt(clean.substring(2, 4), 16)
-  const b = parseInt(clean.substring(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+type Choice = 'default' | 'configure'
+
+function ChoiceCard({
+  title,
+  subtitle,
+  selected,
+  onPress,
+}: {
+  title: string
+  subtitle: string
+  selected: boolean
+  onPress: () => void
+}) {
+  const t = useTheme()
+  const border = selected ? hexToRgba(t.colors.primary, 0.6) : t.colors.border
+  const bg = selected ? hexToRgba(t.colors.primary, t.isDark ? 0.14 : 0.08) : t.colors.card
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        borderWidth: 1,
+        borderColor: border,
+        backgroundColor: bg,
+        borderRadius: 18,
+        padding: t.space.md,
+        gap: 6,
+        opacity: pressed ? 0.92 : 1,
+      })}
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 16 }}>
+            {title}
+          </Text>
+          <Text style={{ color: t.colors.muted, fontWeight: '600', lineHeight: 18 }}>
+            {subtitle}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 999,
+            borderWidth: 2,
+            borderColor: selected ? t.colors.primary : hexToRgba(t.colors.border, 0.8),
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 2,
+          }}
+        >
+          {selected ? (
+            <View
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 999,
+                backgroundColor: t.colors.primary,
+              }}
+            />
+          ) : null}
+        </View>
+      </View>
+    </Pressable>
+  )
 }
 
 export function CreateTournamentScreen({ navigation }: Props) {
   const t = useTheme()
   const toast = useToast()
-  const insets = useSafeAreaInsets()
 
   const [name, setName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [errorText, setErrorText] = useState<string | null>(null)
+  const [choice, setChoice] = useState<Choice>('default')
+  const [saving, setSaving] = useState(false)
 
-  const nameTrim = name.trim()
+  const trimmedName = name.trim()
+  const nameError = trimmedName.length === 0 ? 'Escribe el nombre del torneo.' : null
 
-  const canSubmit = useMemo(() => {
-    if (busy) return false
-    if (!nameTrim) return false
-    if (nameTrim.length < 3) return false
-    return true
-  }, [busy, nameTrim])
+  const canSubmit = useMemo(() => trimmedName.length > 0 && !saving, [trimmedName, saving])
 
-  const create = async () => {
-    setErrorText(null)
-
-    if (!nameTrim) {
-      setErrorText('Escribe el nombre del torneo.')
+  const onCreate = async () => {
+    if (!trimmedName) {
+      toast.error('Nombre requerido', 'Escribe el nombre del torneo.')
       return
     }
 
-    if (nameTrim.length < 3) {
-      setErrorText('El nombre debe tener al menos 3 caracteres.')
-      return
-    }
-
-    setBusy(true)
+    setSaving(true)
     try {
-      const res = await createTournamentMvp({ name: nameTrim })
+      const res = await createTournamentMvp({ name: trimmedName })
 
       if (!res.ok) {
-        const msg = res.error?.message || 'No se pudo crear el torneo.'
-        setErrorText(msg)
-        toast.error('Error', msg)
+        toast.error('Error', res.error?.message || 'No se pudo crear el torneo.')
         return
       }
 
-      toast.success('Torneo creado', 'Se creó como borrador ✅')
-      navigation.goBack()
-    } catch (e) {
-      logError('CreateTournament.create.exception', e)
-      const msg = getErrorMessage(e)
-      setErrorText(msg)
-      toast.error('Error', msg)
+      const id = res.data.tournamentId
+
+      if (choice === 'default') {
+        toast.success('Torneo creado', 'Se creó con configuración estándar.')
+        navigation.goBack() // tu useFocusEffect refresca el listado
+        return
+      }
+
+      toast.info('Listo', 'Ahora configura tu torneo.')
+      navigation.replace('TournamentConfig', { tournamentId: id })
     } finally {
-      setBusy(false)
+      setSaving(false)
     }
   }
 
@@ -84,91 +123,71 @@ export function CreateTournamentScreen({ navigation }: Props) {
     <SafeAreaView style={{ flex: 1, backgroundColor: t.colors.bg }}>
       <StatusBar barStyle={t.isDark ? 'light-content' : 'dark-content'} />
 
-      {/* espacio arriba (safe area) */}
-      <View style={{ height: Math.max(insets.top * 0.08, 6) }} />
+      <View style={{ padding: t.space.lg, gap: 14 }}>
+        <Text style={{ color: t.colors.text, fontSize: 22, fontWeight: '900' }}>
+          Crear torneo
+        </Text>
+        <Text style={{ color: t.colors.muted, fontWeight: '600' }}>
+          Ponle nombre y elige cómo empezar.
+        </Text>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View style={{ flex: 1, justifyContent: 'center', padding: t.space.lg }}>
-          <View
-            style={{
-              width: '100%',
-              maxWidth: 420,
-              alignSelf: 'center',
-              backgroundColor: t.colors.card,
-              borderWidth: 1,
-              borderColor: t.colors.border,
-              borderRadius: 18,
-              padding: t.space.lg,
-              gap: t.space.md,
-              shadowOpacity: 0.12,
-              shadowRadius: 18,
-              elevation: 2,
-            }}
-          >
-            {/* Header */}
-            <View style={{ gap: 6 }}>
-              <Text style={{ color: t.colors.text, fontSize: 22, fontWeight: '900' }}>
-                Crear torneo
-              </Text>
-              <Text style={{ color: t.colors.muted, fontWeight: '600' }}>
-                Se creará con configuración default (MVP) en modo borrador.
-              </Text>
-            </View>
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: t.colors.text, fontWeight: '800' }}>Nombre</Text>
+          <Input
+            value={name}
+            onChangeText={setName}
+            placeholder="Ej. Torneo León 2026"
+            returnKeyType="done"
+            status={!trimmedName && name.length > 0 ? 'error' : 'idle'}
+            hint={!trimmedName && name.length > 0 ? nameError : null}
+          />
+        </View>
 
-            {/* Form */}
-            <View style={{ gap: t.space.sm }}>
-              <Input
-                placeholder="Nombre del torneo"
-                value={name}
-                onChangeText={(v) => {
-                  setName(v)
-                  setErrorText(null)
-                }}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-            </View>
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: t.colors.text, fontWeight: '800' }}>Modo</Text>
 
-            {/* Error */}
-            {errorText ? (
-              <View
-                style={{
-                  padding: t.space.sm,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: hexToRgba(t.colors.danger, 0.35),
-                  backgroundColor: hexToRgba(t.colors.danger, t.isDark ? 0.14 : 0.10),
-                }}
-              >
-                <Text style={{ color: t.colors.text, fontWeight: '800' }}>
-                  {errorText}
-                </Text>
-              </View>
-            ) : null}
+          <ChoiceCard
+            title="Crear con configuración estándar"
+            subtitle="Se crea con el preset Default y vuelves al listado."
+            selected={choice === 'default'}
+            onPress={() => setChoice('default')}
+          />
 
-            {/* Actions */}
-            <View style={{ gap: t.space.sm }}>
-              <Button
-                title={busy ? 'Creando...' : 'Crear torneo'}
-                onPress={create}
-                disabled={!canSubmit}
-              />
-              <Button
-                title="Cancelar"
-                onPress={() => navigation.goBack()}
-                variant="ghost"
-              />
-            </View>
+          <ChoiceCard
+            title="Crear y configurar"
+            subtitle="Se crea con Default y te lleva a editar reglas y etapas."
+            selected={choice === 'configure'}
+            onPress={() => setChoice('configure')}
+          />
+        </View>
 
-            <Text style={{ color: t.colors.muted, textAlign: 'center', marginTop: 6 }}>
-              BracketFlow • Torneos
-            </Text>
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Button
+              title="Cancelar"
+              variant="ghost"
+              onPress={() => navigation.goBack()}
+              disabled={saving}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button
+              title={saving ? 'Creando…' : 'Crear'}
+              onPress={onCreate}
+              disabled={!canSubmit}
+            />
           </View>
         </View>
-      </KeyboardAvoidingView>
+
+        {saving ? (
+          <View style={{ alignItems: 'center', gap: 10, paddingTop: 10 }}>
+            <ActivityIndicator />
+            <Text style={{ color: t.colors.muted, fontWeight: '700' }}>
+              Preparando torneo…
+            </Text>
+          </View>
+        ) : null}
+      </View>
     </SafeAreaView>
   )
 }

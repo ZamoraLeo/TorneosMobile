@@ -2,20 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Image, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTheme } from '../../theme/theme'
-import { Button } from '../../components/ui/Button'
+import { Button, Input, Toggle, useToast } from '../../components/ui'
 import { getMyProfile } from '../../services/profiles.service'
 import type { MyProfile } from '../../domain/profiles'
 import { signOut } from '../../services/auth.service'
+import { hexToRgba } from '../../utils/colors'
 
 type Props = { navigation: any }
-
-function hexToRgba(hex: string, alpha: number) {
-  const clean = hex.replace('#', '')
-  const r = parseInt(clean.substring(0, 2), 16)
-  const g = parseInt(clean.substring(2, 4), 16)
-  const b = parseInt(clean.substring(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
 
 function initialsFromName(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean)

@@ -12,6 +12,8 @@ import type {
   TournamentStage,
   SupportedStageType,
   ParticipantStatus,
+  TournamentSettings,
+  TournamentStageInput
 } from '../domain/tournaments'
 
 import { coerceTournamentSettings, coerceStage } from '../domain/tournaments'
@@ -383,4 +385,47 @@ export async function getTournamentParticipantStats(
     checkedIn: checkedRes.count ?? 0,
     paid: paidRes?.count ?? 0,
   })
+}
+
+export async function updateTournamentSettings(
+  tournamentId: string,
+  settings: TournamentSettings
+): Promise<Result<null>> {
+  const { error } = await supabase
+    .from('tournaments')
+    .update({ settings: toJson(settings) })
+    .eq('id', tournamentId)
+
+  if (error) return err(error)
+  return ok(null)
+}
+
+/**
+ * MVP: reemplazar todas las etapas.
+ * (Más adelante lo podemos cambiar a upsert por stage_id o por (tournament_id, position).)
+ */
+export async function replaceTournamentStages(
+  tournamentId: string,
+  stages: ReadonlyArray<TournamentStageInput>
+): Promise<Result<null>> {
+  const del = await supabase
+    .from('tournament_stages')
+    .delete()
+    .eq('tournament_id', tournamentId)
+
+  if (del.error) return err(del.error)
+
+  if (stages.length === 0) return ok(null)
+
+  const payload = stages.map((s) => ({
+    tournament_id: tournamentId,
+    position: s.position,
+    type: s.type,
+    config: toJson(s.config),
+  }))
+
+  const ins = await supabase.from('tournament_stages').insert(payload)
+  if (ins.error) return err(ins.error)
+
+  return ok(null)
 }

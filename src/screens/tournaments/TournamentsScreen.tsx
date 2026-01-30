@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../theme/theme'
-import { Button } from '../../components/ui/Button'
+import { Button } from '../../components/ui'
 import { deleteTournament, listMyTournaments } from '../../services/tournaments.service'
 import type { TournamentListItem } from '../../domain/tournaments'
 import { useFocusEffect } from '@react-navigation/native'

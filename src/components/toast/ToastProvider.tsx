@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useMemo, useRef, useState } from 'react'
 import { Animated, Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useTheme } from '../../../theme/theme'
+import { useTheme } from '../../theme/theme'
+import { hexToRgba } from '../../utils/colors'
 
 type ToastType = 'success' | 'error' | 'info'
 
@@ -25,14 +26,6 @@ type ToastCtx = {
 }
 
 const ToastContext = createContext<ToastCtx | null>(null)
-
-function hexToRgba(hex: string, alpha: number) {
-  const clean = hex.replace('#', '')
-  const r = parseInt(clean.substring(0, 2), 16)
-  const g = parseInt(clean.substring(2, 4), 16)
-  const b = parseInt(clean.substring(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
 
 function ToastCard({
   toast,
