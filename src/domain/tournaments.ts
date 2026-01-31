@@ -142,6 +142,9 @@ export type TournamentListItem = {
   created_at: string
   starts_at: string | null
   ends_at: string | null
+  settings?: {
+    discipline?: string | null
+  } | null
 }
 
 export type TournamentDetails = {
@@ -192,8 +195,8 @@ export type TournamentParticipantListItem = {
 export type StageTitleMap = Record<SupportedStageType, string>
 
 export const STAGE_TITLES: StageTitleMap = {
-  groups_round_robin: 'Fase 1: Grupos (Round Robin)',
-  double_elimination: 'Fase 2: Doble eliminación',
+  groups_round_robin: 'Grupos (Round Robin)',
+  double_elimination: 'Doble eliminación',
 }
 
 /**

@@ -163,8 +163,9 @@ export function TournamentConfigScreen({ navigation, route }: Props) {
   const [entryFee, setEntryFee] = useState('0')
   const [bestOf, setBestOf] = useState('3')
   const [pointsToWin, setPointsToWin] = useState('4')
-  const [maxPoints, setMaxPoints] = useState('9')
-
+  const [maxPointsEnabled, setMaxPointsEnabled] = useState(false)
+  const [maxPoints, setMaxPoints] = useState('0')
+  
   useEffect(() => {
     ;(async () => {
       setLoading(true)
@@ -184,10 +185,27 @@ export function TournamentConfigScreen({ navigation, route }: Props) {
 
       setEntryFee(String(d.settings.entry_fee ?? 0))
       setBestOf(String(d.settings.match_format.best_of_sets ?? 3))
-      setPointsToWin(String(d.settings.match_format.points_to_win ?? 4))
-      setMaxPoints(String(d.settings.match_format.max_points_possible ?? 9))
-    })()
+      const dbMax = d.settings.match_format.max_points_possible ?? 0
+      setMaxPointsEnabled(dbMax !== 0)
+      setMaxPoints(String(dbMax))    })()
   }, [tournamentId, navigation, toast])
+
+  useEffect(() => {
+    if (!maxPointsEnabled) {
+      setMaxPoints('0')
+    } else {
+      const mx = toInt(maxPoints, 0)
+      const win = toInt(pointsToWin, 1)
+      if (mx === 0) setMaxPoints(String(win))
+    }
+  }, [maxPointsEnabled])
+
+  useEffect(() => {
+    if (!maxPointsEnabled) return
+    const mx = toInt(maxPoints, 0)
+    const win = toInt(pointsToWin, 1)
+    if (mx !== 0 && mx < win) setMaxPoints(String(win))
+  }, [pointsToWin])
 
   const canSave = useMemo(() => !loading && !saving && !!settings, [loading, saving, settings])
 
@@ -195,8 +213,14 @@ export function TournamentConfigScreen({ navigation, route }: Props) {
     if (!next.paid && next.entry_fee !== 0) return 'Si es gratuito, la cuota debe ser 0.'
     if (next.match_format.best_of_sets < 1) return '“Mejor de” debe ser mínimo 1.'
     if (next.match_format.points_to_win < 1) return 'Los puntos para ganar deben ser mínimo 1.'
-    if (next.match_format.max_points_possible < next.match_format.points_to_win) {
-      return 'El máximo de puntos debe ser mayor o igual a los puntos para ganar.'
+    const mx = next.match_format.max_points_possible
+
+    // 0 = infinito, no se valida contra points_to_win
+    if (mx !== 0 && mx < next.match_format.points_to_win) {
+      return 'El máximo de puntos debe ser mayor o igual a “Puntos para ganar” (o 0 para infinito).'
+    }
+    if (mx < 0) {
+      return 'El máximo de puntos no puede ser negativo (usa 0 para infinito).'
     }
 
     for (const s of nextStages) {
@@ -230,7 +254,7 @@ export function TournamentConfigScreen({ navigation, route }: Props) {
       match_format: {
         best_of_sets: toInt(bestOf, settings.match_format.best_of_sets),
         points_to_win: toInt(pointsToWin, settings.match_format.points_to_win),
-        max_points_possible: toInt(maxPoints, settings.match_format.max_points_possible),
+        max_points_possible: maxPointsEnabled ? toInt(maxPoints, 0) : 0,
       },
     }
 
@@ -371,20 +395,43 @@ export function TournamentConfigScreen({ navigation, route }: Props) {
             hint="Ej. 4"
           />
 
-          <Field
-            label="Máximo de puntos por match"
-            value={maxPoints}
-            onChangeText={setMaxPoints}
-            keyboardType="numeric"
-            validate={(v) => {
-              const mx = toInt(v, 0)
-              const win = toInt(pointsToWin, 1)
-              if (mx < 1) return 'Mínimo 1.'
-              if (mx < win) return 'Debe ser mayor o igual a “Puntos para ganar”.'
-              return null
-            }}
-            hint="Evita matches eternos 😄"
-          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Toggle
+                label="Límite máximo de puntos"
+                value={maxPointsEnabled}
+                onChange={setMaxPointsEnabled}
+              />
+            </View>
+
+            <HelpTip
+              title="¿Para qué sirve?"
+              message="Si está apagado, no hay límite (guardamos 0). Si está encendido, el match se corta al llegar al máximo."
+            />
+          </View>
+
+          {maxPointsEnabled ? (
+            <AnimatedCollapse visible={maxPointsEnabled}>
+              <Field
+                label="Máximo de puntos por match"
+                value={maxPoints}
+                onChangeText={setMaxPoints}
+                keyboardType="numeric"
+                validate={(v) => {
+                  const mx = toInt(v, 0)
+                  const win = toInt(pointsToWin, 1)
+                  if (mx < 1) return 'Mínimo 1.'
+                  if (mx < win) return 'Debe ser mayor o igual a “Puntos para ganar”.'
+                  return null
+                }}
+                hint="Evita matches eternos 😄"
+              />
+            </AnimatedCollapse>
+          ) : (
+            <Text style={{ color: t.colors.muted, fontWeight: '600' }}>
+              Sin límite (infinito).
+            </Text>
+          )}
         </SectionCard>
 
         {/* Etapas */}

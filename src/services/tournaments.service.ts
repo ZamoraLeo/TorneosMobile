@@ -133,7 +133,7 @@ export async function listMyTournaments(params?: {
 
   const { data, error } = await supabase
     .from('tournaments')
-    .select('id, name, status, created_at, starts_at, ends_at')
+    .select('id, name, status, created_at, starts_at, ends_at, settings')
     .order('created_at', { ascending: false })
     .range(from, to)
 

@@ -7,84 +7,54 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
 import { Swipeable } from 'react-native-gesture-handler'
 
-import { useTheme } from '../../theme/theme'
+import { useTheme } from '../../../../theme/theme'
 import {
   addGuestParticipant,
   addUserParticipantByUsername,
   deleteParticipant,
-  getTournamentDetails,
   listTournamentParticipants,
   setParticipantCheckIn,
   setParticipantPaid,
   getTournamentParticipantStats
-} from '../../services/tournaments.service'
+} from '../../../../services/tournaments.service'
 
 import type {
-  TournamentDetails,
-  SupportedStageType,
   TournamentParticipantListItem,
-} from '../../domain/tournaments'
+} from '../../../../domain/tournaments'
+import Ionicons from '@react-native-vector-icons/ionicons'
 
-import { Button, Input } from '../../components/ui'
-import { hexToRgba } from '../../utils/colors'
-
-type Props = { navigation: any; route: any }
-type TabKey = 'stages' | 'participants' | 'config'
+import { Button, Input } from '../../../../components/ui'
+import { hexToRgba } from '../../../../utils/colors'
 
 const PAGE_SIZE = 10
 
-function formatDateES(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: '2-digit' })
-}
-
-function statusLabel(s: TournamentDetails['status']) {
-  switch (s) {
-    case 'draft': return 'Borrador'
-    case 'open': return 'Inscripción'
-    case 'locked': return 'Bloqueado'
-    case 'running': return 'En curso'
-    case 'completed': return 'Finalizado'
-    case 'cancelled': return 'Cancelado'
-    default: return s
-  }
-}
-
-function statusColors(t: ReturnType<typeof useTheme>, s: TournamentDetails['status']) {
-  const base =
-    s === 'running'
-      ? t.colors.primary
-      : s === 'completed'
-        ? '#3B82F6'
-        : s === 'cancelled'
-          ? t.colors.danger
-          : t.colors.border
-
-  return {
-    border: hexToRgba(base, 0.5),
-    bg: hexToRgba(base, t.isDark ? 0.18 : 0.10),
-    text: t.colors.text,
-  }
-}
-
 function Card({ children }: { children: React.ReactNode }) {
   const t = useTheme()
+  const bg = t.isDark ? t.colors.card : '#FFFFFF'
+
   return (
     <View
       style={{
+        backgroundColor: bg,
+        borderRadius: 20,
         borderWidth: 1,
         borderColor: t.colors.border,
-        backgroundColor: t.colors.card,
-        borderRadius: 18,
         padding: t.space.lg,
         gap: 10,
+
+        // ✅ Android shadow (lo que sí se ve)
+        elevation: 4,
+
+        // iOS shadow (no estorba)
+        shadowColor: '#000',
+        shadowOpacity: t.isDark ? 0.25 : 0.10,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 10 },
       }}
     >
       {children}
@@ -92,94 +62,128 @@ function Card({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  const t = useTheme()
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-      <Text style={{ color: t.colors.muted, fontWeight: '700' }}>{label}</Text>
-      <Text style={{ color: t.colors.text, fontWeight: '800' }}>{value}</Text>
-    </View>
-  )
-}
-
-function TournamentTabs({
-  value,
-  onChange,
+function MiniChip({
+  icon,
+  label,
+  baseColor,
 }: {
-  value: TabKey
-  onChange: (t: TabKey) => void
+  icon: string
+  label: string
+  baseColor: string
 }) {
   const t = useTheme()
-
-  const tabs: Array<{ key: TabKey; label: string }> = [
-    { key: 'stages', label: 'Etapas' },
-    { key: 'participants', label: 'Participantes' },
-    { key: 'config', label: 'Configuración' },
-  ]
-
   return (
     <View
       style={{
         flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 4,
+        paddingHorizontal: 10,
+        borderRadius: 999,
         borderWidth: 1,
-        borderColor: t.colors.border,
-        backgroundColor: t.colors.card,
-        borderRadius: 16,
-        overflow: 'hidden',
+        borderColor: hexToRgba(baseColor, 0.45),
+        backgroundColor: hexToRgba(baseColor, t.isDark ? 0.18 : 0.10),
       }}
     >
-      {tabs.map((tab) => {
-        const active = tab.key === value
-        return (
-          <Pressable
-            key={tab.key}
-            onPress={() => onChange(tab.key)}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: active
-                ? hexToRgba(t.colors.primary, t.isDark ? 0.18 : 0.14)
-                : 'transparent',
-            }}
-          >
-            <Text
-              style={{
-                color: t.colors.text,
-                fontWeight: active ? '900' : '700',
-                fontSize: 12,
-              }}
-              numberOfLines={1}
-            >
-              {tab.label}
-            </Text>
-          </Pressable>
-        )
-      })}
+      <Ionicons name={icon as any} size={14} color={t.colors.text} />
+      <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 12 }}>
+        {label}
+      </Text>
     </View>
   )
 }
 
-function StagesTab() {
+function StatTile({
+  icon,
+  label,
+  value,
+  baseColor,
+}: {
+  icon: string
+  label: string
+  value: number
+  baseColor: string
+}) {
   const t = useTheme()
+  const bg = t.isDark ? t.colors.card : '#FFFFFF'
+
   return (
-    <Card>
-      <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 16 }}>
-        Etapas
+    <View
+      style={{
+        flex: 1,
+        minWidth: 90,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: hexToRgba(baseColor, 0.35),
+        backgroundColor: bg,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        gap: 6,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: hexToRgba(baseColor, t.isDark ? 0.20 : 0.12),
+            borderWidth: 1,
+            borderColor: hexToRgba(baseColor, 0.35),
+          }}
+        >
+          <Ionicons name={icon as any} size={16} color={t.colors.text} />
+        </View>
+
+        <Text style={{ color: t.colors.muted, fontWeight: '900', fontSize: 12 }}>
+          {label}
+        </Text>
+      </View>
+
+      <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 18 }}>
+        {value}
       </Text>
-      <Text style={{ color: t.colors.muted, lineHeight: 20 }}>
-        Aquí irá la vista visual de la fase de grupos y la llave (bracket).
-        Por ahora lo dejamos listo para más adelante.
-      </Text>
-    </Card>
+    </View>
+  )
+}
+
+function AvatarBubble({
+  isGuest,
+}: {
+  isGuest: boolean
+}) {
+  const t = useTheme()
+  const base = isGuest ? '#8B5CF6' : t.colors.primary
+
+  return (
+    <View
+      style={{
+        width: 46,
+        height: 46,
+        borderRadius: 999,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: hexToRgba(base, t.isDark ? 0.20 : 0.12),
+        borderWidth: 1,
+        borderColor: hexToRgba(base, 0.35),
+      }}
+    >
+      <Ionicons
+        name={(isGuest ? 'person-add' : 'person') as any}
+        size={20}
+        color={t.isDark ? hexToRgba('#FFFFFF', 0.92) : '#14532D'}
+      />
+    </View>
   )
 }
 
 /**
  * ✅ Modal agregar participante (quick add)
  */
-function AddParticipantModal({
+export function AddParticipantModal({
   visible,
   onClose,
   tournamentId,
@@ -279,13 +283,28 @@ function AddParticipantModal({
               gap: 12,
             }}
           >
-            <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 16 }}>
-              Agregar participante
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 12,
+                  backgroundColor: hexToRgba(t.colors.primary, t.isDark ? 0.20 : 0.12),
+                  borderWidth: 1,
+                  borderColor: hexToRgba(t.colors.primary, 0.35),
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="person-add" size={18} color={t.colors.text} />
+              </View>
 
-            <Text style={{ color: t.colors.muted, fontWeight: '700', fontSize: 12 }}>
-              Tip: agrega uno, se limpia el campo, y sigues agregando rápido 🚀
-            </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 16 }}>
+                  Agregar participante
+                </Text>
+              </View>
+            </View>
 
             <View
               style={{
@@ -399,12 +418,14 @@ function AddParticipantModal({
  * ✅ Botoncitos de swipe con iconos
  */
 function SwipeIconButton({
-  icon,
+  iconName,
+  label,
   bg,
   onPress,
   disabled,
 }: {
-  icon: string
+  iconName: string
+  label: string
   bg: string
   onPress: () => void
   disabled?: boolean
@@ -416,17 +437,20 @@ function SwipeIconButton({
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => ({
-        width: 64,
-        height: 64,
+        width: 78,
+        height: 78,
         borderRadius: 18,
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: bg,
         opacity: disabled ? 0.5 : pressed ? 0.9 : 1,
+        borderWidth: 1,
+        borderColor: hexToRgba('#000000', t.isDark ? 0.0 : 0.06), // sutil
       })}
     >
-      <Text style={{ fontSize: 22, fontWeight: '900', color: t.colors.text }}>
-        {icon}
+      <Ionicons name={iconName as any} size={22} color={t.colors.text} />
+      <Text style={{ marginTop: 6, fontSize: 11, fontWeight: '900', color: t.colors.text }}>
+        {label}
       </Text>
     </Pressable>
   )
@@ -435,7 +459,7 @@ function SwipeIconButton({
 /**
  * ✅ Tab Participantes (Swipe acciones)
  */
-function ParticipantsTab({
+export function ParticipantsTab({
   tournamentId,
   onOpenAddModal,
   reloadKey,
@@ -651,17 +675,19 @@ function ParticipantsTab({
     [busyMap, tournamentPaid]
   )
 
-  // ✅ Acciones IZQUIERDA (aparecen al deslizar a la DERECHA 👉)
-  // Aquí van: Check-in + Pagado (si aplica)
   const renderLeftActions = useCallback(
     (p: TournamentParticipantListItem) => {
+      const checkBase = '#22C55E'
+      const paidBase = '#F59E0B'
+      const neutralBase = '#64748B'
+  
       const checkBg = p.checked_in
-        ? hexToRgba('#22C55E', t.isDark ? 0.35 : 0.22)
-        : hexToRgba(t.colors.primary, t.isDark ? 0.25 : 0.18)
+        ? hexToRgba(checkBase, t.isDark ? 0.30 : 0.18)
+        : hexToRgba(t.colors.primary, t.isDark ? 0.26 : 0.16)
   
       const paidBg = !!p.paid
-        ? hexToRgba('#F59E0B', t.isDark ? 0.35 : 0.22)
-        : hexToRgba('#64748B', t.isDark ? 0.35 : 0.20)
+        ? hexToRgba(paidBase, t.isDark ? 0.30 : 0.18)
+        : hexToRgba(neutralBase, t.isDark ? 0.28 : 0.16)
   
       return (
         <View
@@ -669,14 +695,13 @@ function ParticipantsTab({
             flexDirection: 'row',
             alignItems: 'center',
             gap: 10,
-  
-            // ✅ esto hace que los botones queden “bien” con el margen del card
             paddingLeft: t.space.lg,
             paddingRight: 10,
           }}
         >
           <SwipeIconButton
-            icon={p.checked_in ? '✅' : '☑️'}
+            iconName={p.checked_in ? 'checkmark-circle' : 'checkmark-circle-outline'}
+            label="Check-in"
             bg={checkBg}
             disabled={busyMap[p.id]}
             onPress={() => {
@@ -687,7 +712,8 @@ function ParticipantsTab({
   
           {tournamentPaid ? (
             <SwipeIconButton
-              icon={p.paid ? '💰' : '💸'}
+              iconName={p.paid ? 'cash' : 'cash-outline'}
+              label="Pago"
               bg={paidBg}
               disabled={busyMap[p.id]}
               onPress={() => {
@@ -700,102 +726,82 @@ function ParticipantsTab({
       )
     },
     [t, busyMap, tournamentPaid, toggleCheckIn, togglePaid]
-  )
+  )  
 
-  // ✅ Acciones DERECHA (aparecen al deslizar a la IZQUIERDA 👈)
-  // Aquí va: Eliminar
   const renderRightActions = useCallback(
     (p: TournamentParticipantListItem) => {
-      const dangerBg = hexToRgba(t.colors.danger, t.isDark ? 0.32 : 0.18)
-      const dangerBorder = hexToRgba(t.colors.danger, 0.55)
+      const dangerBg = hexToRgba(t.colors.danger, t.isDark ? 0.32 : 0.16)
   
       return (
-        // ✅ el contenedor sí mide todo, para que el swipe “abra completo”
         <View
           style={{
-            width: '100%',
-            flex: 1,
+            width: 110,
             justifyContent: 'center',
+            alignItems: 'flex-end',
+            paddingRight: t.space.lg,
           }}
         >
-          <Pressable
+          <SwipeIconButton
+            iconName="trash"
+            label="Borrar"
+            bg={dangerBg}
+            disabled={busyMap[p.id]}
             onPress={() => {
               closeRow(p.id)
               remove(p)
             }}
-            style={({ pressed }) => ({
-              // ✅ ocupa el alto completo de la fila
-              flex: 1,
-  
-              // ✅ mismo “tamaño visual” que el card
-              marginHorizontal: t.space.lg,
-              borderRadius: 18,
-              padding: t.space.md,
-  
-              borderWidth: 1,
-              borderColor: dangerBorder,
-              backgroundColor: dangerBg,
-  
-              alignItems: 'center',
-              justifyContent: 'center',
-  
-              opacity: pressed ? 0.92 : 1,
-            })}
-          >
-            <Text
-              style={{
-                color: t.colors.text,
-                fontWeight: '900',
-                fontSize: 14,
-              }}
-            >
-              ELIMINAR
-            </Text>
-  
-            <Text style={{ color: t.colors.muted, fontWeight: '700', fontSize: 11, marginTop: 2 }}>
-              (toca para confirmar)
-            </Text>
-          </Pressable>
+          />
         </View>
       )
     },
-    [remove, t]
+    [remove, t, busyMap]
   )
-
+  
   const header = useMemo(() => {
     return (
       <View style={{ paddingHorizontal: t.space.lg, paddingTop: t.space.md, paddingBottom: t.space.md }}>
         <Card>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 16 }}>
-                Participantes
-              </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: hexToRgba(t.colors.primary, t.isDark ? 0.20 : 0.12),
+                    borderWidth: 1,
+                    borderColor: hexToRgba(t.colors.primary, 0.35),
+                  }}
+                >
+                  <Ionicons name="people" size={18} color={t.colors.text} />
+                </View>
 
-              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                <Text style={{ color: t.colors.muted, fontWeight: '800' }}>
-                  👥 Total: {totalCount}
-                </Text>
-
-                <Text style={{ color: t.colors.muted, fontWeight: '800' }}>
-                  ✅ Check-in: {checkedInCount}
-                </Text>
-
-                {tournamentPaid ? (
-                  <Text style={{ color: t.colors.muted, fontWeight: '800' }}>
-                    💰 Pagados: {paidCount}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 16 }}>
+                    Participantes
                   </Text>
-                ) : null}
+                  <Text style={{ color: t.colors.muted, fontWeight: '800', fontSize: 12, marginTop: 2 }}>
+                    Total: {totalCount}
+                  </Text>
+                </View>
               </View>
-
-              <Text style={{ color: t.colors.muted, fontWeight: '600', fontSize: 12, marginTop: 4 }}>
-                👉 swipe para check-in/pago · 👈 swipe para eliminar
-              </Text>
             </View>
 
             <View style={{ minWidth: 120 }}>
               <Button title="Agregar" onPress={onOpenAddModal} />
             </View>
+          </View>
+
+          <View style={{ height: 10 }} />
+
+          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+            <StatTile icon="checkmark-circle-outline" label="Check-in" value={checkedInCount} baseColor="#22C55E" />
+            {tournamentPaid ? (
+              <StatTile icon="cash-outline" label="Pagados" value={paidCount} baseColor="#F59E0B" />
+            ) : null}
           </View>
         </Card>
 
@@ -854,280 +860,120 @@ function ParticipantsTab({
       ListFooterComponent={footer}
       refreshing={refreshing}
       onRefresh={onRefresh}
-      contentContainerStyle={{ paddingBottom: t.space.lg }}
+      style={{overflow: 'visible'}}
+      contentContainerStyle={{ paddingBottom: t.space.lg, overflow:'visible' }}
       renderItem={({ item: p, index }) => {
         const title = p.display_name || p.guest_name || 'Participante'
         const kind = p.user_id ? 'Usuario app' : 'Invitado'
         const isPaid = !!p.paid
-      
+            
         return (
           <View style={{ paddingTop: index === 0 ? 0 : t.space.sm }}>
-            <Swipeable
-              friction={1.5}
-              ref={(ref) => {
-                rowRefs.current[p.id] = ref as any
-              }}
-              onSwipeableWillOpen={() => onRowWillOpen(p.id)}
-              onSwipeableClose={() => {
-                if (openRowId.current === p.id) openRowId.current = null
-              }}
-      
-              renderLeftActions={() => renderLeftActions(p)}
-              leftThreshold={30}
-              overshootLeft={false}
-      
-              renderRightActions={() => renderRightActions(p)}
-              rightThreshold={30}
-              overshootRight={false}
-            >
-              <Pressable
-                onLongPress={() => remove(p)}
-                style={({ pressed }) => ({
-                  borderWidth: 1,
-                  borderColor: t.colors.border,
-                  backgroundColor: t.colors.card,
-                  borderRadius: 18,
-                  padding: t.space.md,
-                  gap: 8,
-                  opacity: pressed ? 0.96 : 1,
-      
-                  // ✅ el margen aquí (NO afuera), para que Swipeable sea full width
-                  marginHorizontal: t.space.lg,
-                })}
+            {/* Wrapper de padding horizontal (NO margen en el card) */}
+            <View style={{ paddingHorizontal: t.space.lg, overflow: 'visible' }}>
+              <Swipeable
+                friction={1.5}
+                ref={(ref) => {
+                  rowRefs.current[p.id] = ref as any
+                }}
+                onSwipeableWillOpen={() => onRowWillOpen(p.id)}
+                onSwipeableClose={() => {
+                  if (openRowId.current === p.id) openRowId.current = null
+                }}
+                renderLeftActions={() => renderLeftActions(p)}
+                leftThreshold={30}
+                overshootLeft={false}
+                renderRightActions={() => renderRightActions(p)}
+                rightThreshold={30}
+                overshootRight={false}
+                // ✅ Clave: que NO recorte la sombra del child que se mueve
+                containerStyle={{ overflow: 'visible' } as any}
               >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-                  <View style={{ flex: 1, gap: 4 }}>
-                    <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 15 }}>
-                      {title}
-                    </Text>
-                    <Text style={{ color: t.colors.muted, fontWeight: '700', fontSize: 12 }}>
-                      {kind}
-                    </Text>
-                  </View>
-      
-                  <View style={{ alignItems: 'flex-end', gap: 3 }}>
-                    <Text style={{ color: t.colors.muted, fontWeight: '800', fontSize: 12 }}>
-                      {p.checked_in ? '✅ check-in' : '⏳ sin check-in'}
-                    </Text>
-      
-                    {tournamentPaid ? (
-                      <Text style={{ color: t.colors.muted, fontWeight: '800', fontSize: 12 }}>
-                        {isPaid ? '💰 pagado' : '💸 pendiente'}
-                      </Text>
-                    ) : null}
+                {/* 1) ShadowWrap: aquí va la sombra (este view es el que SE MUEVE) */}
+                <View
+                  style={{
+                    borderRadius: 20,
+                    backgroundColor: t.isDark ? t.colors.card : '#FFFFFF',
+                    overflow: 'visible',
+        
+                    // sombra/elevation aquí (mueve con el swipe)
+                    elevation: t.isDark ? 0 : 5,
+                    shadowColor: '#000',
+                    shadowOpacity: t.isDark ? 0 : 0.10,
+                    shadowRadius: 14,
+                    shadowOffset: { width: 0, height: 10 },
+                  }}
+                >
+                  {/* 2) ClipWrap: aquí van esquinas + borde + recorte */}
+                  <View
+                    style={{
+                      borderRadius: 20,
+                      overflow: 'hidden',
+                      borderWidth: 1,
+                      borderColor: t.colors.border,
+                      backgroundColor: t.isDark ? t.colors.card : '#FFFFFF',
+                    }}
+                  >
+                    <Pressable
+                      onLongPress={() => remove(p)}
+                      style={({ pressed }) => ({
+                        backgroundColor: t.isDark ? t.colors.card : '#FFFFFF',
+                        opacity: pressed ? 0.95 : 1,
+                      })}
+                    >
+                      {/* Accent bar */}
+                      <View
+                        style={{
+                          height: 4,
+                          backgroundColor: p.checked_in
+                            ? '#22C55E'
+                            : hexToRgba(t.colors.border, 0.8),
+                        }}
+                      />
+        
+                      <View style={{ padding: t.space.md, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <AvatarBubble isGuest={!p.user_id} />
+        
+                        <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+                          <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 15 }} numberOfLines={1}>
+                            {title}
+                          </Text>
+        
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <MiniChip
+                              icon={p.user_id ? 'person-outline' : 'ticket-outline'}
+                              label={kind}
+                              baseColor={p.user_id ? t.colors.primary : '#8B5CF6'}
+                            />
+        
+                            <MiniChip
+                              icon={p.checked_in ? 'checkmark-circle' : 'time-outline'}
+                              label={p.checked_in ? 'Check-in' : 'Sin check-in'}
+                              baseColor={p.checked_in ? '#22C55E' : '#64748B'}
+                            />
+        
+                            {tournamentPaid ? (
+                              <MiniChip
+                                icon={isPaid ? 'cash' : 'cash-outline'}
+                                label={isPaid ? 'Pagado' : 'Pendiente'}
+                                baseColor={isPaid ? '#F59E0B' : '#64748B'}
+                              />
+                            ) : null}
+                          </View>
+                        </View>
+        
+                        <Ionicons name="chevron-forward" size={18} color={t.colors.muted} />
+                      </View>
+                    </Pressable>
                   </View>
                 </View>
-              </Pressable>
-            </Swipeable>
+              </Swipeable>
+            </View>
           </View>
         )
-      }}
+      }}      
       onEndReachedThreshold={0.7}
       onEndReached={loadMore}
     />
-  )
-}
-
-function ConfigTab({ data }: { data: TournamentDetails }) {
-  const t = useTheme()
-
-  const stageTitles = {
-    groups_round_robin: 'Fase 1: Grupos (Round Robin)',
-    double_elimination: 'Fase 2: Doble eliminación',
-  } satisfies Record<SupportedStageType, string>
-
-  return (
-    <View style={{ gap: t.space.md }}>
-      <Card>
-        <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 16 }}>
-          Configuración general
-        </Text>
-
-        <Row label="Disciplina" value={(data.settings?.discipline || '—').toString()} />
-        <Row label="Entrada" value={data.settings?.paid ? 'Pagado' : 'Gratis'} />
-        <Row
-          label="Cuota"
-          value={
-            data.settings?.paid
-              ? `${data.settings?.currency || 'MXN'} ${data.settings?.entry_fee ?? 0}`
-              : '0'
-          }
-        />
-
-        <View style={{ height: 1, backgroundColor: t.colors.border, marginTop: 6 }} />
-
-        <Text style={{ color: t.colors.text, fontWeight: '900' }}>
-          Formato de match
-        </Text>
-
-        <Row label="Sets (best of)" value={`${data.settings?.match_format?.best_of_sets ?? '—'}`} />
-        <Row label="Puntos para ganar" value={`${data.settings?.match_format?.points_to_win ?? '—'}`} />
-        <Row label="Máximo posible" value={`${data.settings?.match_format?.max_points_possible ?? '—'}`} />
-      </Card>
-
-      <View style={{ gap: 10 }}>
-        <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 16 }}>
-          Etapas (config)
-        </Text>
-
-        {data.stages.map((s) => (
-          <Card key={`${s.position}-${s.type}`}>
-            <Text style={{ color: t.colors.text, fontWeight: '900' }}>
-              {stageTitles[s.type] ?? `Etapa ${s.position}`}
-            </Text>
-
-            {s.type === 'groups_round_robin' ? (
-              <>
-                <Row label="Modo grupos" value={s.config.groups.mode || '—'} />
-                <Row label="Tamaño por grupo" value={`${s.config.groups.group_size ?? '—'}`} />
-                <Row label="Avanzan por grupo" value={`${s.config.groups.advance_per_group ?? '—'}`} />
-                <Row label="Enfrentamientos" value={`${s.config.round_robin.games_per_pair ?? 1} vez`} />
-              </>
-            ) : (
-              <>
-                <Row label="Permitir BYEs" value={s.config.allow_byes ? 'Sí' : 'No'} />
-                <Row label="Final con reset" value={s.config.grand_final_reset ? 'Sí' : 'No'} />
-              </>
-            )}
-          </Card>
-        ))}
-      </View>
-    </View>
-  )
-}
-
-export function TournamentDetailsScreen({ navigation, route }: Props) {
-  const t = useTheme()
-  const tournamentId: string = route?.params?.tournamentId
-
-  const [tab, setTab] = useState<TabKey>('participants')
-
-  const [loading, setLoading] = useState(true)
-  const [errorText, setErrorText] = useState<string | null>(null)
-  const [data, setData] = useState<TournamentDetails | null>(null)
-
-  const [modalOpen, setModalOpen] = useState(false)
-  const [participantsReloadKey, setParticipantsReloadKey] = useState(0)
-
-  const load = useCallback(async () => {
-    setErrorText(null)
-    const res = await getTournamentDetails(tournamentId)
-    if (!res.ok) {
-      setErrorText(res.error?.message || 'No se pudo cargar el torneo.')
-      setData(null)
-      return
-    }
-    setData(res.data)
-  }, [tournamentId])
-
-  useEffect(() => {
-    ;(async () => {
-      setLoading(true)
-      await load()
-      setLoading(false)
-    })()
-  }, [load])
-
-  useEffect(() => {
-    if (data?.name) navigation.setOptions({ title: data.name })
-  }, [data?.name, navigation])
-
-  const tournamentPaid = !!data?.settings?.paid
-
-  if (loading) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: t.colors.bg }}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-          <ActivityIndicator />
-          <Text style={{ color: t.colors.muted, fontWeight: '700' }}>Cargando torneo…</Text>
-        </View>
-      </SafeAreaView>
-    )
-  }
-
-  return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: t.colors.bg }}>
-      <View style={{ padding: t.space.lg, gap: t.space.md }}>
-        {errorText ? (
-          <View
-            style={{
-              padding: t.space.sm,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: hexToRgba(t.colors.danger, 0.35),
-              backgroundColor: hexToRgba(t.colors.danger, t.isDark ? 0.14 : 0.10),
-            }}
-          >
-            <Text style={{ color: t.colors.text, fontWeight: '800' }}>{errorText}</Text>
-          </View>
-        ) : null}
-
-        {!data ? null : (
-          <>
-            <View style={{ gap: 8 }}>
-              <Text style={{ color: t.colors.text, fontSize: 22, fontWeight: '900' }}>
-                {data.name}
-              </Text>
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                {(() => {
-                  const c = statusColors(t, data.status)
-                  return (
-                    <View
-                      style={{
-                        paddingVertical: 4,
-                        paddingHorizontal: 10,
-                        borderRadius: 999,
-                        borderWidth: 1,
-                        borderColor: c.border,
-                        backgroundColor: c.bg,
-                      }}
-                    >
-                      <Text style={{ color: c.text, fontWeight: '900', fontSize: 12 }}>
-                        {statusLabel(data.status)}
-                      </Text>
-                    </View>
-                  )
-                })()}
-
-                <Text style={{ color: t.colors.muted, fontWeight: '700', fontSize: 12 }}>
-                  Creado: {formatDateES(data.created_at)}
-                </Text>
-              </View>
-            </View>
-
-            <TournamentTabs value={tab} onChange={setTab} />
-          </>
-        )}
-      </View>
-
-      {!data ? null : tab === 'participants' ? (
-        <>
-          <ParticipantsTab
-            tournamentId={tournamentId}
-            reloadKey={participantsReloadKey}
-            onOpenAddModal={() => setModalOpen(true)}
-            tournamentPaid={tournamentPaid}
-          />
-
-          <AddParticipantModal
-            visible={modalOpen}
-            onClose={() => setModalOpen(false)}
-            tournamentId={tournamentId}
-            onAdded={() => setParticipantsReloadKey((x) => x + 1)}
-          />
-        </>
-      ) : (
-        <ScrollView
-          contentContainerStyle={{
-            paddingHorizontal: t.space.lg,
-            paddingBottom: t.space.lg,
-            gap: t.space.md,
-          }}
-        >
-          {tab === 'stages' ? <StagesTab /> : <ConfigTab data={data} />}
-        </ScrollView>
-      )}
-    </SafeAreaView>
   )
 }

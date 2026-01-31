@@ -113,7 +113,7 @@ export function CreateTournamentScreen({ navigation }: Props) {
       }
 
       toast.info('Listo', 'Ahora configura tu torneo.')
-      navigation.replace('TournamentConfig', { tournamentId: id })
+      navigation.replace('TournamentWizard', { tournamentId: id })
     } finally {
       setSaving(false)
     }

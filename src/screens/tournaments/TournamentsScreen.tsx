@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   Pressable,
   StatusBar,
@@ -9,23 +10,23 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useFocusEffect } from '@react-navigation/native'
+import { Swipeable } from 'react-native-gesture-handler'
+
 import { useTheme } from '../../theme/theme'
 import { Button } from '../../components/ui'
 import { deleteTournament, listMyTournaments } from '../../services/tournaments.service'
 import type { TournamentListItem } from '../../domain/tournaments'
-import { useFocusEffect } from '@react-navigation/native'
+import { hexToRgba } from '../../utils/colors'
+
+// ✅ Si instalaste Ionicons:
+import Ionicons from '@react-native-vector-icons/ionicons'
+// Si instalaste MaterialCommunityIcons, sería algo como:
+// import { MaterialCommunityIcons } from '@react-native-vector-icons/material-community-icons'
 
 type Props = { navigation: any }
 
 const PAGE_SIZE = 20
-
-function hexToRgba(hex: string, alpha: number) {
-  const clean = hex.replace('#', '')
-  const r = parseInt(clean.substring(0, 2), 16)
-  const g = parseInt(clean.substring(2, 4), 16)
-  const b = parseInt(clean.substring(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
 
 function formatDateES(iso: string) {
   const d = new Date(iso)
@@ -44,128 +45,366 @@ function statusLabel(s: TournamentListItem['status']) {
   }
 }
 
-function statusColors(t: ReturnType<typeof useTheme>, s: TournamentListItem['status']) {
-  const base =
-    s === 'running'
-      ? t.colors.primary
-      : s === 'completed'
-        ? '#3B82F6'
-        : s === 'cancelled'
-          ? t.colors.danger
-          : t.colors.border
+function statusBaseColor(t: ReturnType<typeof useTheme>, s: TournamentListItem['status']) {
+  switch (s) {
+    case 'draft':
+      return t.isDark ? '#6B7280' : '#9CA3AF' // gris “borrador”
+    case 'open':
+      return '#22C55E' // verde “abierto”
+    case 'locked':
+      return '#F59E0B' // ámbar “bloqueado”
+    case 'running':
+      return '#3B82F6' // azul “en curso”
+    case 'completed':
+      return '#8B5CF6' // morado “finalizado”
+    case 'cancelled':
+      return t.colors.danger // rojo
+    default:
+      return t.colors.border
+  }
+}
 
+function statusIconName(s: TournamentListItem['status']) {
+  switch (s) {
+    case 'draft': return 'create-outline'
+    case 'open': return 'megaphone-outline'
+    case 'locked': return 'lock-closed-outline'
+    case 'running': return 'play-circle-outline'
+    case 'completed': return 'trophy'
+    case 'cancelled': return 'close-circle-outline'
+    default: return 'trophy-outline'
+  }
+}
+
+function statusChip(t: ReturnType<typeof useTheme>, status: TournamentListItem['status']) {
+  const base = statusBaseColor(t, status)
   return {
-    border: hexToRgba(base, 0.5),
     bg: hexToRgba(base, t.isDark ? 0.18 : 0.10),
+    border: hexToRgba(base, 0.45),
     text: t.colors.text,
   }
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function disciplineLabel(raw?: string | null) {
+  if (!raw) return null
+  const key = String(raw).trim()
+  if (!key) return null
+
+  // Por ahora: mapeo mínimo (puedes crecerlo luego o conectar a catálogo)
+  const map: Record<string, string> = {
+    beyblade_x: 'Beyblade X',
+  }
+
+  return map[key] ?? key
+}
+
+function DisciplineChip({ value }: { value: string }) {
   const t = useTheme()
+
+  // “verde pro” pero suave (no compite con el status)
+  const bg = hexToRgba(t.colors.primary, t.isDark ? 0.14 : 0.08)
+  const border = hexToRgba(t.colors.primary, 0.25)
+  const text = t.isDark ? hexToRgba('#FFFFFF', 0.92) : '#14532D' // verde oscuro como tu trofeo
+
   return (
     <View
       style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 4,
+        paddingHorizontal: 10,
+        borderRadius: 999,
         borderWidth: 1,
-        borderColor: t.colors.border,
-        backgroundColor: t.colors.card,
-        borderRadius: 18,
-        padding: t.space.lg,
-        gap: 10,
+        borderColor: border,
+        backgroundColor: bg,
+        maxWidth: 120,
       }}
     >
-      <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 18 }}>
-        Aún no tienes torneos
+      <Ionicons name="game-controller-outline" size={14} color={text} />
+      <Text
+        style={{ color: text, fontWeight: '900', fontSize: 12 }}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        {value}
       </Text>
-      <Text style={{ color: t.colors.muted, lineHeight: 20 }}>
-        Crea tu primer torneo y empieza a agregar participantes.
-      </Text>
+    </View>
+  )
+}
 
-      <View style={{ marginTop: 6 }}>
+function RightDeleteAction({
+  dragX,
+  onPress,
+}: {
+  dragX: Animated.AnimatedInterpolation<string | number>
+  onPress: () => void
+}) {
+  const t = useTheme()
+
+  // dragX es negativo al swippear a la izquierda
+  const scale = dragX.interpolate({
+    inputRange: [-120, -60, 0],
+    outputRange: [1, 0.96, 0.9],
+    extrapolate: 'clamp',
+  })
+
+  const opacity = dragX.interpolate({
+    inputRange: [-120, -30, 0],
+    outputRange: [1, 0.7, 0],
+    extrapolate: 'clamp',
+  })
+
+  return (
+    <Animated.View
+      style={{
+        width: 96,
+        justifyContent: 'center',
+        alignItems: 'center',
+        opacity,
+        transform: [{ scale }],
+      }}
+    >
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => ({
+          width: 74,
+          height: 74,
+          borderRadius: 18,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: hexToRgba(t.colors.danger, t.isDark ? 0.24 : 0.14),
+          borderWidth: 1,
+          borderColor: hexToRgba(t.colors.danger, 0.45),
+          opacity: pressed ? 0.86 : 1,
+        })}
+      >
+        <Ionicons name="trash" size={20} color={t.colors.text} />
+        <Text style={{ marginTop: 6, color: t.colors.text, fontWeight: '900', fontSize: 11 }}>
+          Borrar
+        </Text>
+      </Pressable>
+    </Animated.View>
+  )
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const t = useTheme()
+
+  const cardBg = t.isDark ? t.colors.card : '#FFFFFF'
+
+  return (
+    <View
+      style={{
+        backgroundColor: cardBg,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: t.colors.border,
+        padding: t.space.lg,
+        gap: 10,
+        shadowColor: '#000',
+        shadowOpacity: t.isDark ? 0.25 : 0.10,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 3,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View
+          style={{
+            width: 54,
+            height: 54,
+            borderRadius: 999,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: hexToRgba(t.colors.primary, t.isDark ? 0.18 : 0.12),
+            borderWidth: 1,
+            borderColor: hexToRgba(t.colors.primary, 0.35),
+          }}
+        >
+          <Ionicons
+            name="trophy"
+            size={22}
+            // ✅ trofeo con verde más oscuro (modo claro) y más vivo en modo oscuro
+            color={t.isDark ? '#4ADE80' : '#14532D'}
+          />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: t.colors.text, fontWeight: '900', fontSize: 18 }}>
+            Aún no tienes torneos
+          </Text>
+          <Text style={{ color: t.colors.muted, marginTop: 4, fontWeight: '600' }}>
+            Crea uno y comienza a registrar participantes.
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ marginTop: 8 }}>
         <Button title="Crear torneo" onPress={onCreate} />
       </View>
     </View>
   )
 }
 
-function TournamentCard({
+function TournamentRow({
   item,
-  onPress,
+  onOpen,
   onDelete,
 }: {
   item: TournamentListItem
-  onPress: () => void
+  onOpen: () => void
   onDelete: () => void
 }) {
   const t = useTheme()
-  const c = statusColors(t, item.status)
+  const swipeRef = useRef<Swipeable>(null)
+
+  const base = statusBaseColor(t, item.status)
+  const chip = statusChip(t, item.status)
+
+  const cardBg = t.isDark ? t.colors.card : '#FFFFFF'
+  const accent = statusBaseColor(t, item.status)
+  const discipline = disciplineLabel(item.settings?.discipline)
+  console.log(discipline);
+  const handleDelete = () => {
+    // cierre visual antes del alert (se siente fino)
+    swipeRef.current?.close()
+    onDelete()
+  }
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        borderWidth: 1,
-        borderColor: t.colors.border,
-        backgroundColor: t.colors.card,
-        borderRadius: 18,
-        padding: t.space.md,
-        gap: 10,
-        opacity: pressed ? 0.92 : 1,
-      })}
+    // 1) Outer: sombra (NO overflow hidden)
+    <View
+      style={{
+        borderRadius: 22,
+  
+        // Android shadow
+        elevation: 6,
+  
+        // iOS shadow (no molesta, pero en Android se ignora)
+        shadowColor: '#000',
+        shadowOpacity: t.isDark ? 0.28 : 0.12,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 10 },
+  
+        // esto ayuda a que la sombra se vea en fondo claro
+        backgroundColor: 'transparent',
+      }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-        <View style={{ flex: 1, gap: 6 }}>
-          <Text
-            style={{ color: t.colors.text, fontWeight: '900', fontSize: 16 }}
-            numberOfLines={1}
+      <Swipeable
+        ref={swipeRef}
+        overshootRight={false}
+        rightThreshold={40}
+        renderRightActions={(_, dragX) => (
+          <View
+            style={{
+              width: 110,
+              backgroundColor: 'transparent',
+              justifyContent: 'center',
+              alignItems: 'flex-end',
+              paddingRight: 10,
+            }}
           >
-            {item.name}
-          </Text>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <View
-              style={{
-                paddingVertical: 4,
-                paddingHorizontal: 10,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: c.border,
-                backgroundColor: c.bg,
-              }}
-            >
-              <Text style={{ color: c.text, fontWeight: '800', fontSize: 12 }}>
-                {statusLabel(item.status)}
-              </Text>
-            </View>
-
-            <Text style={{ color: t.colors.muted, fontWeight: '700', fontSize: 12 }}>
-              Creado: {formatDateES(item.created_at)}
-            </Text>
+            <RightDeleteAction dragX={dragX} onPress={handleDelete} />
           </View>
+        )}
+      >
+        {/* 2) Inner: recorte (SÍ overflow hidden) */}
+        <View style={{ borderRadius: 22, overflow: 'hidden' }}>
+          <Pressable
+            onPress={onOpen}
+            style={({ pressed }) => ({
+              backgroundColor: cardBg,
+              borderWidth: 1,
+              borderColor: t.isDark ? t.colors.border : hexToRgba(t.colors.border, 0.9),
+              opacity: pressed ? 0.94 : 1,
+            })}
+          >
+            {/* Accent bar */}
+            <View style={{ height: 4, backgroundColor: base }} />
+  
+            <View style={{ padding: t.space.md, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              {/* Avatar / icon */}
+              <View
+                style={{
+                  width: 54,
+                  height: 54,
+                  borderRadius: 999,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: hexToRgba(accent, t.isDark ? 0.18 : 0.12),
+                  borderWidth: 1,
+                  borderColor: hexToRgba(accent, 0.35),
+                }}
+              >
+                <Ionicons
+                  name={statusIconName(item.status)}
+                  size={22}
+                  color={t.isDark ? hexToRgba('#FFFFFF', 0.92) : '#14532D'}
+                />
+              </View>
+  
+              <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+                {/* 👇 Fila 1: Nombre + Disciplina */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    minWidth: 0,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: t.colors.text,
+                      fontWeight: '900',
+                      fontSize: 16,
+                      flexShrink: 1,
+                      minWidth: 0,
+                    }}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {item.name}
+                  </Text>
+
+                  {discipline ? (
+                    <View style={{ flexShrink: 0 }}>
+                      <DisciplineChip value={discipline} />
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* 👇 Fila 2: Status + Fecha */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <View
+                    style={{
+                      paddingVertical: 4,
+                      paddingHorizontal: 10,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: chip.border,
+                      backgroundColor: chip.bg,
+                    }}
+                  >
+                    <Text style={{ color: chip.text, fontWeight: '900', fontSize: 12 }}>
+                      {statusLabel(item.status)}
+                    </Text>
+                  </View>
+
+                  <Text style={{ color: t.colors.muted, fontWeight: '700', fontSize: 12 }}>
+                    {formatDateES(item.created_at)}
+                  </Text>
+                </View>
+              </View>
+  
+              <Ionicons name="chevron-forward" size={18} color={t.colors.muted} />
+            </View>
+          </Pressable>
         </View>
-
-        <Pressable
-          onPress={onDelete}
-          hitSlop={12}
-          style={({ pressed }) => ({
-            paddingVertical: 6,
-            paddingHorizontal: 10,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: hexToRgba(t.colors.danger, 0.35),
-            backgroundColor: hexToRgba(t.colors.danger, t.isDark ? 0.14 : 0.10),
-            opacity: pressed ? 0.85 : 1,
-          })}
-        >
-          <Text style={{ color: t.colors.text, fontWeight: '900' }}>🗑️</Text>
-        </Pressable>
-      </View>
-
-      <Text style={{ color: t.colors.muted, fontWeight: '600', fontSize: 12 }}>
-        Toca para abrir el torneo
-      </Text>
-    </Pressable>
-  )
+      </Swipeable>
+    </View>
+  )  
 }
 
 export function TournamentsScreen({ navigation }: Props) {
@@ -183,14 +422,11 @@ export function TournamentsScreen({ navigation }: Props) {
 
   const loadFirstPage = useCallback(async () => {
     setErrorText(null)
-
     const res = await listMyTournaments({ page: 0, pageSize: PAGE_SIZE })
-
     if (!res.ok) {
       setErrorText(res.error?.message || 'No se pudo cargar la lista de torneos.')
       return
     }
-
     setItems(res.data.items)
     setPage(0)
     setHasMore(res.data.hasMore)
@@ -205,13 +441,10 @@ export function TournamentsScreen({ navigation }: Props) {
     setLoadingMore(true)
     try {
       const res = await listMyTournaments({ page: nextPage, pageSize: PAGE_SIZE })
-
       if (!res.ok) {
-        // no bloqueamos toda la pantalla, solo avisamos arriba si quieres
         setErrorText(res.error?.message || 'No se pudieron cargar más torneos.')
         return
       }
-
       setItems((prev) => [...prev, ...res.data.items])
       setPage(nextPage)
       setHasMore(res.data.hasMore)
@@ -236,13 +469,8 @@ export function TournamentsScreen({ navigation }: Props) {
     setRefreshing(false)
   }, [loadFirstPage])
 
-  const goCreate = () => {
-    navigation.navigate('CreateTournament')
-  }
-
-  const onOpenTournament = (id: string) => {
-    navigation.navigate('TournamentDetails', { tournamentId: id })
-  }
+  const goCreate = () => navigation.navigate('CreateTournament')
+  const onOpenTournament = (id: string) => navigation.navigate('TournamentDetails', { tournamentId: id })
 
   const onDeleteTournament = (item: TournamentListItem) => {
     Alert.alert(
@@ -255,12 +483,10 @@ export function TournamentsScreen({ navigation }: Props) {
           style: 'destructive',
           onPress: async () => {
             const res = await deleteTournament(item.id)
-
             if (!res.ok) {
               Alert.alert('Error', res.error?.message || 'No se pudo eliminar el torneo.')
               return
             }
-
             setItems((prev) => prev.filter((x) => x.id !== item.id))
           },
         },
@@ -269,25 +495,38 @@ export function TournamentsScreen({ navigation }: Props) {
   }
 
   const header = useMemo(() => {
+    const count = items.length
     return (
       <View style={{ paddingHorizontal: t.space.lg, paddingTop: t.space.lg, gap: 10 }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-            <Text style={{ color: t.colors.text, fontSize: 22, fontWeight: '900' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flex: 1, gap: 4, minWidth: 0 }}>
+            <Text style={{ color: t.colors.text, fontSize: 24, fontWeight: '900' }}>
               Torneos
             </Text>
-            <Text style={{ color: t.colors.muted, fontWeight: '600' }} numberOfLines={1}>
-              Tus torneos creados.
-            </Text>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={{ color: t.colors.muted, fontWeight: '700' }} numberOfLines={1}>
+                Tus torneos creados
+              </Text>
+
+              <View
+                style={{
+                  paddingVertical: 3,
+                  paddingHorizontal: 10,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: hexToRgba(t.colors.border, 0.9),
+                  backgroundColor: t.isDark ? t.colors.card : '#FFFFFF',
+                }}
+              >
+                <Text style={{ color: t.colors.muted, fontWeight: '900', fontSize: 12 }}>
+                  {count}
+                </Text>
+              </View>
+            </View>
           </View>
 
-          <View style={{ width: 110 }}>
+          <View style={{ width: 120 }}>
             <Button title="+ Crear" onPress={goCreate} />
           </View>
         </View>
@@ -307,16 +546,14 @@ export function TournamentsScreen({ navigation }: Props) {
         ) : null}
       </View>
     )
-  }, [t, errorText, goCreate])
+  }, [t, errorText, goCreate, items.length])
 
   const footer = useMemo(() => {
     if (!loadingMore) return null
     return (
-      <View style={{ paddingVertical: 14, alignItems: 'center', gap: 8 }}>
+      <View style={{ paddingVertical: 16, alignItems: 'center', gap: 8 }}>
         <ActivityIndicator />
-        <Text style={{ color: t.colors.muted, fontWeight: '700' }}>
-          Cargando más…
-        </Text>
+        <Text style={{ color: t.colors.muted, fontWeight: '700' }}>Cargando más…</Text>
       </View>
     )
   }, [loadingMore, t])
@@ -324,15 +561,12 @@ export function TournamentsScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.colors.bg }}>
       <StatusBar barStyle={t.isDark ? 'light-content' : 'dark-content'} />
-
       <View style={{ height: Math.max(insets.top * 0.08, 4) }} />
 
       {loading ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 }}>
           <ActivityIndicator />
-          <Text style={{ color: t.colors.muted, fontWeight: '700' }}>
-            Cargando torneos...
-          </Text>
+          <Text style={{ color: t.colors.muted, fontWeight: '700' }}>Cargando torneos…</Text>
         </View>
       ) : (
         <FlatList
@@ -345,9 +579,9 @@ export function TournamentsScreen({ navigation }: Props) {
           contentContainerStyle={{ paddingBottom: t.space.lg }}
           renderItem={({ item }) => (
             <View style={{ paddingHorizontal: t.space.lg, paddingTop: t.space.md }}>
-              <TournamentCard
+              <TournamentRow
                 item={item}
-                onPress={() => onOpenTournament(item.id)}
+                onOpen={() => onOpenTournament(item.id)}
                 onDelete={() => onDeleteTournament(item)}
               />
             </View>

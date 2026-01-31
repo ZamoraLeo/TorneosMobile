@@ -9,13 +9,13 @@ import { useTheme } from '../theme/theme'
 // Screens
 import { TournamentsScreen } from '../screens/tournaments/TournamentsScreen'
 import { CreateTournamentScreen } from '../screens/tournaments/CreateTournamentScreen'
-
+import { CreateTournamentWizardScreen } from '../screens/tournaments/CreateTournamentWizardScreen'
 import { CommunitiesScreen } from '../screens/communities/CommunitiesScreen'
 import { ProfileScreen } from '../screens/profile/ProfileScreen'
 import { EditProfileScreen } from '../screens/profile/EditProfileScreen'
 import { AppSettingsScreen } from '../screens/settings/AppSettingsScreen'
 import { HomeScreen } from '../screens/home/HomeScreen'
-import { TournamentDetailsScreen } from '../screens/tournaments/TournamentDetailsScreen'
+import { TournamentDetailsScreen } from '../screens/tournaments/details/TournamentDetailsScreen'
 import { TournamentConfigScreen } from '../screens/tournaments/TournamentConfigScreen'
 import { hexToRgba } from '../utils/colors'
 
@@ -186,6 +186,7 @@ type TournamentsStackParamList = {
   CreateTournament: undefined
   TournamentDetails: { tournamentId: string }
   TournamentConfig: { tournamentId: string }
+  TournamentWizard: { tournamentId: string }
 }
 type CommunitiesStackParamList = { CommunitiesMain: undefined }
 type SettingsStackParamList = {
@@ -243,6 +244,12 @@ function TournamentsStackNavigator() {
         name="TournamentConfig"
         component={TournamentConfigScreen}
         options={{ title: 'Configurar torneo' }}
+      />
+
+      <TournamentsStack.Screen
+        name="TournamentWizard"
+        component={CreateTournamentWizardScreen}
+        options={{ title: 'Crear torneo' }}
       />
     </TournamentsStack.Navigator>
   )
